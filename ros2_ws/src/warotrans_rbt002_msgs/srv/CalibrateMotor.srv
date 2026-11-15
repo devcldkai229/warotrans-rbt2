@@ -1,0 +1,8 @@
+# Calibration mode only. Spin ONE motor port at a small speed for at most duration_ms.
+# Call again before it expires to keep it running (hold-to-run); rps=0 stops it.
+uint8 motor        # port 1..4
+float32 rps        # signed, as sent to the firmware, |rps| <= calibration_max_rps
+uint32 duration_ms # <= calibration_max_duration_ms
+---
+bool success
+string message

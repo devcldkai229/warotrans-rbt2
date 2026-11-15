@@ -1,0 +1,103 @@
+# =============================================================================
+# RBT-002 runtime parameters — the ONE place for robot constants (ROS params).
+# =============================================================================
+# 0 / 0.0 = CHƯA XÁC NHẬN (not measured). ROS parameter files cannot hold null, so every node treats a
+# non-positive physical value as "missing" and refuses the features that need it (ENABLED, odometry, TF).
+# Record each measurement in docs/calibration.md (date, method, who) before changing a value here.
+# Verified values carry a "VERIFIED <date>" comment.
+# =============================================================================
+
+/**:
+  ros__parameters:
+    # Motors stay electrically commanded to STOP unless the launch argument motors_enabled:=true.
+    motors_enabled: false
+    # Host-side wheel speed clamp, rev/s of the motor output shaft (firmware does NOT clamp the serial path).
+    # Must stay <= the firmware preset rps_limit of the configured motor_type. Conservative until measured.
+    max_wheel_rps: 0.5
+
+    # --- wheel geometry (metres) — CHƯA XÁC NHẬN ---
+    wheel_radius_m: 0.0
+    half_wheelbase_m: 0.0      # front-rear axle distance / 2
+    half_track_m: 0.0          # left-right wheel centre distance / 2
+
+    # --- motor port map — CHƯA XÁC NHẬN, fill from Calibration mode (docs/first_motion_procedure.md) ---
+    port_fl: 0                 # RRC Lite motor port (1..4) driving the front-left wheel
+    port_fr: 0
+    port_rl: 0
+    port_rr: 0
+    port_signs: [0, 0, 0, 0]   # per PORT M1..M4: +1 if +rps rolls that wheel forward, -1 if backward
+
+rrc_lite:
+  ros__parameters:
+    transport: serial
+    # VERIFIED 2026-11-15 on warotrans-rbt002 (udevadm: 1a86:55d4, serial 5AE2006352).
+    port: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5AE2006352-if00
+    baud: 1000000              # VERIFIED 2026-11-15 (firmware source + passive probe, 0 CRC errors)
+    # Firmware motor preset, sent FIRST on every connect (before STOP). REQUIRED on hardware.
+    # VERIFIED 2026-11-15: with no MOTOR packet since power-up the RBT-002 rear wheels ran by themselves; a single
+    # set_motor_type(1 = JGB37, positive PID) stopped them (docs/safety.md). The preset's 1980 counts/rev and
+    # 3.0 rps limit are NOT verified for JGB36-520 (docs/calibration.md §3): rps values may be scaled wrong.
+    motor_type: 1
+    setpoint_timeout_s: 0.2
+    idle_stop_period_s: 0.5
+    stop_on_connect: true
+    query_version: true
+    required_setpoint_publisher: base_controller
+
+base_controller:
+  ros__parameters:
+    max_linear_mps: 0.2        # policy limits (not physics); the UI slider scales them 0..1
+    max_angular_radps: 0.8
+    max_linear_accel: 0.4
+    max_angular_accel: 1.5
+    cmd_timeout_s: 0.3
+    # Battery window that allows motion. 2026-11-15: board reads 3.95 V even with the switch on (pack not
+    # reaching the board; motors only buzz on USB back-feed) -> ENABLED/CALIBRATION blocked until fixed.
+    # 2S2P Li-ion, max 8.4 V (operator 2026-11-15). 6.6 V = 3.3 V/cell floor, 8.6 V = charger tolerance.
+    battery_min_v: 6.6
+    battery_max_v: 8.6
+    battery_stale_s: 3.0
+    calibration_max_rps: 0.3
+    calibration_max_duration_ms: 3000
+    default_speed_scale: 0.5
+    control_rate_hz: 50.0
+    cmd_vel_topic: /cmd_vel
+    required_cmd_vel_publisher: control_gateway
+
+sensor_adapter:
+  ros__parameters:
+    imu_units: g_dps           # VERIFIED 2026-11-15: |a| = 0.946 at rest -> g, deg/s (FW-25 style build)
+    imu_frame: imu_link
+    imu_accel_variance: 0.0    # CHƯA XÁC NHẬN
+    imu_gyro_variance: 0.0     # CHƯA XÁC NHẬN
+    ultrasonic_frame: ultrasonic_front
+    ultrasonic_min_range_m: 0.0
+    ultrasonic_max_range_m: 0.0
+    ultrasonic_fov_rad: 0.0
+    battery_soc_enabled: false
+    battery_cells_in_series: 3 # only used if battery_soc_enabled (CHƯA XÁC NHẬN)
+    battery_plausible_min_v: 5.0
+    battery_plausible_max_v: 30.0
+
+wheel_odom:
+  ros__parameters:
+    counts_per_rev: 0.0        # encoder counts per output-shaft rev — CHƯA XÁC NHẬN (and needs patched firmware)
+    publish_tf: false
+
+sllidar_node:
+  ros__parameters:
+    channel_type: serial
+    # VERIFIED 2026-11-15 (udevadm: CP2102N 10c4:ea60). Baud / scan mode from the working sllidar_c1_launch.py.
+    serial_port: /dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_8edd7c2b506eef1198b2dcc2c169b110-if00-port0
+    serial_baudrate: 460800
+    frame_id: laser
+    inverted: false
+    angle_compensate: true
+    scan_mode: Standard
+
+control_gateway:
+  ros__parameters:
+    host: 0.0.0.0
+    port: 8080
+    deadman_s: 0.3
+    web_dist: ""               # empty = installed share/warotrans_rbt002_control_gateway/web

@@ -1,0 +1,29 @@
+# MOCK overlay (loaded after rbt002.yaml when mock:=true). Simulation / UI work only.
+# mock_profile is a launch argument (not set here: node-scoped YAML keys would override launch overrides).
+# Every number here is invented for the simulator and is NOT an RBT-002 measurement.
+/**:
+  ros__parameters:
+    wheel_radius_m: 0.04
+    half_wheelbase_m: 0.10
+    half_track_m: 0.12
+    port_fl: 1
+    port_fr: 2
+    port_rl: 3
+    port_rr: 4
+    port_signs: [1, -1, 1, -1]
+    max_wheel_rps: 1.0
+
+rrc_lite:
+  ros__parameters:
+    transport: mock
+    motor_type: 1              # mock only: without a motor_type the driver sends no MOTOR packet at all
+    mock_battery_mv: 12000
+
+base_controller:
+  ros__parameters:
+    battery_min_v: 10.5
+    battery_max_v: 12.8
+
+wheel_odom:
+  ros__parameters:
+    counts_per_rev: 1980.0

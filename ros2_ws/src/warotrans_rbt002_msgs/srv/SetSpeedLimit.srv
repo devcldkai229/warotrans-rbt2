@@ -1,0 +1,5 @@
+float32 scale   # 0..1 of the configured max linear / angular speed
+---
+bool success
+string message
+float32 scale

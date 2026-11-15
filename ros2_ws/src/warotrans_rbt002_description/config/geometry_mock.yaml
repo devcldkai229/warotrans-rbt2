@@ -1,0 +1,8 @@
+# MOCK GEOMETRY — simulation / UI development only. NOT RBT-002 measurements. Never use on the robot.
+mock: true
+chassis: {length: 0.30, width: 0.24, height: 0.10}
+base_footprint_to_base_link: {x: 0.0, y: 0.0, z: 0.04, yaw: 0.0}
+laser: {x: 0.0, y: 0.0, z: 0.15, yaw: 0.0}
+imu: {x: 0.0, y: 0.0, z: 0.05, roll: 0.0, pitch: 0.0, yaw: 0.0}
+ultrasonic_front: {x: 0.15, y: 0.0, z: 0.03, yaw: 0.0}
+camera: {x: 0.14, y: 0.0, z: 0.10, roll: 0.0, pitch: 0.0, yaw: 0.0}

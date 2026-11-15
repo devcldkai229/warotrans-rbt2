@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>warotrans_rrc_lite</name>
+  <version>0.1.0</version>
+  <description>Hiwonder RRC Lite (STM32F407) serial driver: protocol, single port owner, host watchdog, mock board, diagnostics.</description>
+  <maintainer email="dev@warotrans.local">WaroTrans Team</maintainer>
+  <license>Proprietary</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>warotrans_rbt002_msgs</exec_depend>
+  <exec_depend>python3-serial</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

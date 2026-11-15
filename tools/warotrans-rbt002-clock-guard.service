@@ -1,0 +1,12 @@
+[Unit]
+Description=Restart the RBT-002 stack after a wall-clock jump (no RTC)
+After=warotrans-rbt002.service
+
+[Service]
+Type=simple
+ExecStart=/home/waro/warotrans_rbt2_ws/tools/rbt2_clock_guard.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

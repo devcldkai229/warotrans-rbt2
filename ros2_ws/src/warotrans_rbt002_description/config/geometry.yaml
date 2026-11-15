@@ -1,0 +1,50 @@
+# =============================================================================
+# RBT-002 static geometry (warotrans_rbt002_description)
+# =============================================================================
+# null = NOT MEASURED YET (CHƯA XÁC NHẬN). Never replace null with a guessed number.
+# Metres / radians, REP-103 (+X forward, +Y left, +Z up). Record every measurement with date and method in
+# docs/calibration.md before writing it here.
+#
+# A TF edge is published only when all of its values are present. base_footprint -> base_link is required
+# for every other edge, so with this file as-is robot_state_publisher is NOT started on the real robot.
+# =============================================================================
+
+chassis:            # visual box only
+  length: null
+  width: null
+  height: null
+
+base_footprint_to_base_link:
+  # base_footprint = ground point under the turning centre (centre of the 4 wheels for this mecanum base)
+  x: null
+  y: null
+  z: null           # wheel axle height above ground
+  yaw: null
+
+laser:              # RPLIDAR C1 optical centre, relative to base_link
+  x: null
+  y: null
+  z: null
+  yaw: null         # mount rotation vs vehicle forward; verify with an object in front (+X)
+
+imu:                # QMI8658 on the RRC Lite board, relative to base_link
+  x: null
+  y: null
+  z: null
+  roll: null
+  pitch: null
+  yaw: null
+
+ultrasonic_front:   # Hiwonder I2C sonar on the RRC Lite expansion port (data needs patched firmware)
+  x: null
+  y: null
+  z: null
+  yaw: null
+
+camera:             # Camera Module 3 Wide
+  x: null
+  y: null
+  z: null
+  roll: null
+  pitch: null
+  yaw: null

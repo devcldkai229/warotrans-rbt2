@@ -1,0 +1,16 @@
+# ROS
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+__pycache__/
+*.pyc
+.pytest_cache/
+# web
+web/node_modules/
+web/dist/
+ros2_ws/src/warotrans_rbt002_control_gateway/web/
+# misc
+*.log
+.DS_Store
+# vendor firmware dumps (Hiwonder, not ours to publish)
+firmware/backups/

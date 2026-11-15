@@ -1,0 +1,30 @@
+# RBT-002 stack autostart (driver + base controller + sensors + lidar + mobile control UI on :8080).
+# Starts in SAFE; motion still needs an operator to claim control and press ENABLE in the UI.
+# Starting the driver early matters: the stock RRC Lite firmware leaves the motor outputs uninitialised until
+# it receives a MOTOR packet (rear wheels ran by themselves, 2026-11-15); the driver sends set_motor_type first.
+[Unit]
+Description=WaroTrans RBT-002 ROS 2 stack
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=waro
+EnvironmentFile=/home/waro/.config/warotrans/rbt002.env
+# All nodes run on this Pi. At boot the stack can start before eth0 has an address; DDS discovery between the
+# boot-started nodes was then incomplete (no /imu/data, gateway service calls timed out, 2026-11-15).
+# Localhost discovery makes it independent of the network state; the web UI is plain HTTP and unaffected.
+Environment=ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+# No RTC battery: the clock jumps ~hours when NTP syncs after boot. On 2026-11-15 the nodes started before the
+# jump lost each other ~5 min later (rrc_lite fine, base_controller saw link/battery stale -> UI "timed out").
+# Wait up to 90 s for the first NTP sync; start anyway when offline.
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 90); do [ "$(timedatectl show -p NTPSynchronized --value)" = yes ] && exit 0; sleep 1; done; echo "NTP not synced after 90 s, starting anyway"'
+ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/waro/ros2_ws/install/setup.bash && source /home/waro/warotrans_rbt2_ws/install/setup.bash && exec ros2 launch warotrans_rbt002_bringup bringup.launch.py motors_enabled:=${MOTORS_ENABLED}'
+KillSignal=SIGINT
+TimeoutStopSec=20
+TimeoutStartSec=150
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
