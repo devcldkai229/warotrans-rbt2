@@ -13,8 +13,8 @@
     motors_enabled: false
     # Host-side wheel speed clamp, rev/s of the motor output shaft (firmware does NOT clamp the serial path).
     # Must stay <= the firmware preset rps_limit of the configured motor_type.
-    # 2026-11-15 test: open to JGB37 preset rps_limit (3.0) for full-speed trial — NOT a measured JGB36-520 limit.
-    max_wheel_rps: 3.0
+    # motor_type 3 (JGB528 131:1 90 rpm): firmware preset rps_limit 1.1, more only saturates its PID (3.0 was the JGB37 preset of a 2026-11-15 manual trial). Fleet: 1.0 (fleet_base.yaml).
+    max_wheel_rps: 1.1
 
     # --- wheel geometry (metres) — 2026-11-15, docs/calibration.md §1 ---
     wheel_radius_m: 0.0485     # Hiwonder drawing: mecanum wheel diameter 97 mm (not yet checked by roll-out)

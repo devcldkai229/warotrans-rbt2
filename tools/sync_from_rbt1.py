@@ -20,7 +20,7 @@ import shutil
 import subprocess
 import sys
 
-CORE = ["warotrans_navigation", "warotrans_localization", "warotrans_slam", "warotrans_lane_planner", "warotrans_fleet"]
+CORE = ["warotrans_navigation", "warotrans_localization", "warotrans_slam", "warotrans_lane_planner", "warotrans_fleet", "warotrans_msgs"]
 # Map bundles to carry (the current operational map). Raw SLAM maps and old bundles stay in RBT-001's repo.
 MAP_BUNDLES = ["map_one_v013"]
 # Single files outside the core packages that core code imports at runtime/test time:

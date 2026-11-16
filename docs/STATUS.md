@@ -58,7 +58,15 @@ Cập nhật: 2026-11-15
 - [x] E2E qua WebSocket thật (`tools/mock_e2e.py`), 27/27 bước cho cả profile `stock` và `patched`: lease, ENABLE bị chặn khi chưa có lease, tiến/xoay không trộn, deadman, giới hạn tốc độ, STOP từ client khác, calibration 1 motor, đóng socket thì dừng, `/odom` và `/ultrasonic/front` chỉ có với firmware patch
 
 ## Chưa có / bị chặn
-- Wheel odometry, ultrasonic: cần firmware patch (đề xuất, chưa nạp)
-- ENABLED: bị chặn cho tới khi đo hình học, map port/chiều, ngưỡng pin
-- E-stop phần cứng: chưa có
-- Fleet (MQTT) và Nav2: chưa tích hợp (cần odom)
+- E-stop phần cứng: chưa có (RBT-001 cũng chưa)
+- Pin motor riêng: chưa có. Thử không motor dùng `tools/rbt2_mode.sh sim-battery 80` (telemetry báo `SIMULATED`), tắt bằng `sim-battery off`
+- Pha 1 (đo ở robot): encoder 10 vòng, odom thẳng/xoay, trục IMU, tốc độ tối đa, watchdog khi đang chạy
+
+## Sẵn sàng điều phối nhiều robot (2026-11-17)
+- [x] `recovery_guard` nhận kích thước qua tham số (sửa ở warotrans, sync sang). Overlay `nav2_rbt002.yaml` đặt 0.15 × 0.132
+- [x] `max_wheel_rps` chế độ manual 1.1 (giới hạn preset JGB528), fleet 1.0
+- [x] `ROS_DOMAIN_ID=31` (service), `MOTORS_ENABLED=false` mặc định khi cài autostart
+- [x] `tools/rbt2_readiness.py`: nodes, chỉ gate publish `/cmd_vel_motor`, TF, AMCL, pin, broker, lệch giờ ≤ 2 s
+- [x] `tools/set_initial_pose.py` (copy từ RBT-001); bình thường dùng LOCALIZE trên web
+- [x] Backend: footprint traffic chung 0.32 × 0.27 m, home RBT-002 = `EP-PARKING-B`, camera `warotrans-rbt002.local:8081`
+- Khác biệt tham số với RBT-001: `docs/rbt1_vs_rbt2.md`

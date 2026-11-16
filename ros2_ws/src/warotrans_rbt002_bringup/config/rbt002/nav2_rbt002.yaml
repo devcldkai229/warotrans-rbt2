@@ -24,3 +24,10 @@ global_costmap:
   global_costmap:
     ros__parameters:
       footprint: "[[0.15, 0.132], [0.15, -0.132], [-0.15, -0.132], [-0.15, 0.132]]"
+
+# BackUp / Spin start only with clearance in this box (warotrans_fleet recovery_guard; RBT-001: 0.16 x 0.13).
+recovery_guard:
+  ros__parameters:
+    half_length: 0.15
+    half_width: 0.132
+    padding: 0.02
