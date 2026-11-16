@@ -12,6 +12,12 @@
   <exec_depend>warotrans_rbt002_hardware</exec_depend>
   <exec_depend>warotrans_rbt002_description</exec_depend>
   <exec_depend>warotrans_rbt002_control_gateway</exec_depend>
+  <exec_depend>warotrans_rbt002_camera</exec_depend>
+  <!-- fleet mode: core copied from RBT-001 (docs/adr/0002) -->
+  <exec_depend>warotrans_localization</exec_depend>
+  <exec_depend>warotrans_navigation</exec_depend>
+  <exec_depend>warotrans_fleet</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
   <!-- sllidar_ros2 is built from source in ~/ros2_ws on the Pi (Slamtec repo); not a hard dependency so mock
        mode works without it. -->
   <test_depend>python3-pytest</test_depend>

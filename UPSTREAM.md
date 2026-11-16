@@ -23,3 +23,17 @@ Nguồn: repo `warotrans` (RBT-001) @ `d44bd23e18abb43b7148ef8fa33f845afc638c22`
 ## Chưa dùng
 - `warotrans_fleet` (MQTT gateway): cần `/odom` và Nav2, sẽ dùng khi có firmware patch
 - `warotrans_teleop`: thay bằng gateway mới (WebSocket, lease, calibration)
+
+## Core package dùng chung (copy nguyên trạng, đồng bộ bằng `tools/sync_from_rbt1.py`)
+
+`warotrans_navigation` (chỉ mang bundle bản đồ đang vận hành), `warotrans_localization`, `warotrans_slam`, `warotrans_lane_planner`, `warotrans_fleet`.
+
+Quy tắc:
+- **Không sửa các package này ở đây.**
+- Mọi khác biệt của RBT-002 nằm trong `warotrans_rbt002_bringup/config/rbt002/*.yaml` (overlay) và trong tham số launch.
+- Nếu RBT-002 cần một giá trị mà RBT-001 đang hardcode, sửa ở repo warotrans (chuyển thành tham số) rồi sync lại.
+
+| Ngày | Việc | Nguồn | Thay đổi | Ghi chú |
+|---|---|---|---|---|
+| 2026-11-15 | core sync | `fix/final-rbt1-precise-arrival@d44bd23` + working tree chưa commit (bản precise-arrival đang chạy trên RBT-001) | +156 ~0 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet; maps map_one_v013 |
+| 2026-11-15 | core sync | `fix/final-rbt1-precise-arrival@d44bd23` + working tree chưa commit | +0 ~1 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet; maps map_one_v013 |

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { collectIssues, fmt } from "./lib/format";
+import { collectIssues, fmt, sonarZone } from "./lib/format";
 import { useGateway } from "./lib/useGateway";
 
 // Simple manual control: hold a button to move (forward / backward / rotate left / rotate right), release to stop.
@@ -142,6 +142,9 @@ export default function App() {
         </span>
       </div>
 
+      <CameraView />
+      <Ultrasonic rangeM={t?.ultrasonic?.range_m ?? null} available={!!t?.link?.ultrasonic_available} />
+
       {(toast || issues.length > 0) && (
         <div className="rounded-xl bg-red-900/70 px-3 py-2 text-sm">
           {toast ?? `${issues[0].source}: ${issues[0].text}`}
@@ -188,6 +191,38 @@ export default function App() {
       >
         STOP
       </button>
+    </div>
+  );
+}
+
+// Camera: MJPEG straight from the robot's camera server (:8081/stream, same contract as the fleet relay).
+function CameraView() {
+  const [nonce, setNonce] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const src = `${window.location.protocol}//${window.location.hostname}:8081/stream?n=${nonce}`;
+  useEffect(() => {
+    if (!failed) return;
+    const id = setTimeout(() => {
+      setFailed(false);
+      setNonce((n) => n + 1);
+    }, 3000);
+    return () => clearTimeout(id);
+  }, [failed]);
+  return (
+    <div className="relative overflow-hidden rounded-2xl bg-black" style={{ aspectRatio: "16 / 9" }}>
+      {!failed && <img src={src} alt="camera" className="h-full w-full object-contain" onError={() => setFailed(true)} />}
+      {failed && <div className="flex h-full items-center justify-center text-sm text-slate-400">Camera chưa sẵn sàng, đang thử lại…</div>}
+    </div>
+  );
+}
+
+function Ultrasonic({ rangeM, available }: { rangeM: number | null; available: boolean }) {
+  const zone = sonarZone(rangeM);
+  const color = zone === "far" ? "bg-emerald-600" : zone === "mid" ? "bg-amber-500 text-black" : zone === "near" ? "bg-red-600" : "bg-slate-700";
+  return (
+    <div className={`num flex items-center justify-between rounded-xl px-4 py-2 text-sm font-semibold ${color}`}>
+      <span>Siêu âm phía trước</span>
+      <span>{available && rangeM !== null && rangeM > 0 ? `${(rangeM * 100).toFixed(1)} cm` : "—"}</span>
     </div>
   );
 }

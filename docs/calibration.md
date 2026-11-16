@@ -17,13 +17,22 @@ Quy tắc: chỉ ghi số **đã đo**, kèm ngày, phương pháp và người 
 | 2026-11-15 | Board đọc pin | 3.94 V kể cả khi bật công tắc. Motor chỉ kêu ở 0.1 rps, áp sụt 3936 xuống 3893 mV | `pi_spin_test.py` (kê bánh, có đồng ý) |
 | 2026-11-15 | LiDAR C1 | `sllidar_ros2` @3430009, 460800 baud, `scan_mode Standard`, `frame_id laser` | `~/ros2_ws/src/sllidar_ros2/launch/sllidar_c1_launch.py` trên Pi |
 
-## 1. Hình học bánh: CHƯA XÁC NHẬN
+## 1. Hình học bánh và vị trí cảm biến (2026-11-15)
 
-| Thông số | Giá trị | Cách đo |
+| Thông số | Giá trị | Nguồn |
 |---|---|---|
-| `wheel_radius_m` | CHƯA XÁC NHẬN | thước kẹp đo đường kính bánh mecanum (chỗ con lăn tiếp đất) chia 2. Hoặc lăn 10 vòng, đo quãng đường rồi chia cho 20π |
-| `half_wheelbase_m` | CHƯA XÁC NHẬN | khoảng cách tâm trục trước và trục sau, chia 2 |
-| `half_track_m` | CHƯA XÁC NHẬN | khoảng cách tâm bánh trái và bánh phải, chia 2 |
+| `wheel_radius_m` | 0.0485 | bản vẽ Hiwonder: bánh mecanum Ø97 × 48 mm. Chưa kiểm bằng cách lăn 10 vòng rồi đo quãng đường |
+| `half_wheelbase_m` | 0.0975 | anh đo bằng thước: tâm trục trước tới tâm trục sau 195 mm, hai bên như nhau |
+| `half_track_m` | 0.1075 | anh đo: tâm bánh trái tới tâm bánh phải 215 mm |
+| `base_footprint → base_link` | (0, 0, 0.0485) | tâm xoay = tâm khung; base_link đặt ở chiều cao trục bánh |
+| laser | (−0.018, 0, 0.1315), yaw 0 | anh đo: lùi 1.8 cm so với tâm khung, mặt quét cao 18 cm, hướng 0° của C1 đã nhìn về phía trước. TF từ `base_footprint` kiểm trên Pi: (−0.018, 0, 0.180) |
+| imu | x 0.041, y 0, z 0.0515 (board cao 10 cm); **yaw CHƯA XÁC NHẬN** (sửa khi chạy) | anh đo: tâm board lệch 4.1 cm về phía trước. Board đặt phẳng (trọng lực chỉ trên trục +z) |
+| ultrasonic_front | (0.125, 0, 0.0565), yaw 0 (cao 10.5 cm) | anh đo: lùi 2.5 cm từ mép trước khung; mép trước = 0.30/2 theo wiki |
+| camera | (0.125, 0, 0.1015), yaw 0 (cao 15 cm, ngay trên ultrasonic); **pitch CHƯA XÁC NHẬN** | anh đo |
+| khung (chỉ để vẽ) | 0.30 × 0.245 × 0.10 m | Hiwonder wiki, Black Mecanum Wheel Chassis |
+| footprint bao ngoài (cho Nav2 sau này) | dài 0.30 m, rộng 0.263 m (215 + 48) | tính từ số đo |
+
+Motor theo wiki của khung này: **JGB37-528R131-08**, tỉ số 1:131, encoder 11 cực, 100 vòng/phút không tải. Số xung kỳ vọng = 11 × 4 × 131 = 5764 counts mỗi vòng trục ra, trùng preset firmware `JGB528` (type 3). Hiện đang dùng preset JGB37 (1980): **cần xác nhận bằng cách đếm encoder** (§3). Anh có ghi "JGB36-520", nên chưa chốt.
 
 ## 2. Port motor và chiều
 
@@ -36,20 +45,13 @@ Lịch sử:
 - 2026-11-15: đã quay thử M1..M4 ở +0.1 rps, mỗi motor 1 s. **Không bánh nào quay, chỉ nghe tiếng rè** (thiếu nguồn, xem §4), nên chưa xác định được.
 - Khi đã có nguồn pin: vào UI → Calibration → giữ **+** từng cổng → chọn bánh và chiều trong form "Map cổng → bánh" → **Lưu**. Map được áp dụng ngay và lưu vào `~/.config/warotrans/rbt002_calibration.yaml` trên Pi.
 
-## 3. Motor JGB36-520: CHƯA XÁC NHẬN
+## 3. Motor: JGB37-528R131-08 (anh xác nhận 2026-11-15)
 
-Cần biết **tỉ số truyền** (in trên nhãn motor, ví dụ 1:30) và **PPR encoder** (thường là 11 xung/vòng trục motor với dòng 520). Từ đó tính counts/vòng trục ra = PPR × 4 × tỉ số.
-
-So với preset của firmware:
-
-| type | counts |
-|---|---|
-| JGB520 | 3960 (tỉ số 90) |
-| JGB37 | 1980 (tỉ số 45) |
-| JGA27 | 1040 |
-| JGB528 | 5764 (tỉ số 131) |
-
-Nếu không khớp preset nào, PID và thang rps của firmware gốc sẽ sai. Khi đó cần firmware patch (MOTOR sub 0x06) hoặc chấp nhận sai số thang tốc độ.
+- Datasheet (Hiwonder wiki): tỉ số 1:131, encoder AB 11 cực, 100 vòng/phút không tải, 90 vòng/phút định mức.
+- **counts_per_rev = 11 × 4 × 131 = 5764**, trùng preset firmware `JGB528` → `motor_type: 3` (rps_limit 1.1, PID 300/2/12).
+- `wheel_odom.counts_per_rev: 5764`. `/odom` đã chạy 50 Hz trên Pi.
+- **Chưa kiểm bằng tay:** quay một bánh đúng 10 vòng thì phải ra khoảng 57 640 counts.
+- Tốc độ: `max_wheel_rps` hiện là 0.5, tức 0.5 × π × 0.097 ≈ **0.15 m/s**. Firmware cho tối đa 1.1 vòng/s (≈ 0.34 m/s). Chỉ nâng sau khi chạy thử thật.
 
 ## 4. Pin: CHƯA XÁC NHẬN
 

@@ -218,6 +218,35 @@ static void wt_motor_feedback(uint32_t now)
     packet_transmit(&packet_controller, PACKET_FUNC_MOTOR, &r, sizeof(r));
 }
 
+/* WAROTRANS PATCH item 9: sonar LEDs show the distance zone (operator 2026-11-15):
+ * green > 500 mm, yellow 200..500 mm, red < 200 mm, 20 mm hysteresis. Hiwonder glowing sonar registers
+ * (TurboPi Sonar.py): 2 = RGB mode (0 = fixed colour), 3..5 = LED0 RGB, 6..8 = LED1 RGB. Written only when
+ * the zone changes, in one 7-byte burst starting at register 2. */
+#define WT_LED_FAR_MM   500u
+#define WT_LED_NEAR_MM  200u
+#define WT_LED_HYST_MM  20u
+static void wt_sonar_leds(uint16_t mm)
+{
+    static int8_t zone = -1;              /* -1 = never written, 0 green, 1 yellow, 2 red */
+    int8_t z = zone;
+    if(z < 0) {
+        z = mm > WT_LED_FAR_MM ? 0 : (mm >= WT_LED_NEAR_MM ? 1 : 2);
+    } else if(z == 0) {
+        if(mm < WT_LED_FAR_MM - WT_LED_HYST_MM) z = (mm < WT_LED_NEAR_MM - WT_LED_HYST_MM) ? 2 : 1;
+    } else if(z == 1) {
+        if(mm > WT_LED_FAR_MM + WT_LED_HYST_MM) z = 0;
+        else if(mm < WT_LED_NEAR_MM - WT_LED_HYST_MM) z = 2;
+    } else {
+        if(mm > WT_LED_NEAR_MM + WT_LED_HYST_MM) z = (mm > WT_LED_FAR_MM + WT_LED_HYST_MM) ? 0 : 1;
+    }
+    if(z == zone) return;
+    static const uint8_t rgb[3][3] = {{0, 255, 0}, {255, 160, 0}, {255, 0, 0}};
+    uint8_t buf[7] = {0, rgb[z][0], rgb[z][1], rgb[z][2], rgb[z][0], rgb[z][1], rgb[z][2]};
+    if(HAL_I2C_Mem_Write(&hi2c1, WT_SONAR_ADDR << 1, 0x02, I2C_MEMADD_SIZE_8BIT, buf, sizeof(buf), 3) == HAL_OK) {
+        zone = z;                         /* retry next cycle if the write failed */
+    }
+}
+
 static void wt_sonar(uint32_t now)
 {
     static uint32_t last = 0;
@@ -229,6 +258,7 @@ static void wt_sonar(uint32_t now)
     if(HAL_I2C_Mem_Read(&hi2c1, WT_SONAR_ADDR << 1, 0x00, I2C_MEMADD_SIZE_8BIT, buf, 2, 3) == HAL_OK) {
         mm = (uint16_t)(buf[0] | (buf[1] << 8));
         if(mm > 5000) mm = 5000;
+        if(mm > 0) wt_sonar_leds(mm);     /* 0 = no echo / bad read: keep the current colour */
     }
     packet_transmit(&packet_controller, PACKET_FUNC_ULTRASONIC, &mm, sizeof(mm));
 }

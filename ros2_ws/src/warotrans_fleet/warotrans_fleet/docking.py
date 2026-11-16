@@ -1,0 +1,254 @@
+"""Docking geometry: reach an endpoint heading in a bay too small to turn in (2026-11-11 lab).
+
+The robot is a skid-steer chassis: it can drive straight and turn in place, nothing else. In the small bays of MAP-ONE
+the footprint cannot turn at the endpoint (the tail reaches the wall), so "drive there, then turn to the endpoint
+heading" fails. The robot has to turn where there is room, on the bay axis, then drive straight in, forwards or
+backwards. Leaving such a bay is the mirror image: straight out first, then turn.
+
+Pure Python (no ROS): the static occupancy map of the bundle, the padded footprint around base_footprint.
+"""
+
+from __future__ import annotations
+
+import math
+import os
+import re
+from dataclasses import dataclass
+from typing import Optional, Sequence
+
+Pose = tuple[float, float, float]
+Point = tuple[float, float]
+
+
+def _wrap(a: float) -> float:
+    return math.atan2(math.sin(a), math.cos(a))
+
+
+class OccupancyMap:
+    """Blocked cells of a map_server map (trinary PGM): occupied, and unknown."""
+
+    def __init__(self, width: int, height: int, resolution: float, origin: Point, blocked: Sequence[bool]) -> None:
+        self.width = width
+        self.height = height
+        self.resolution = resolution
+        self.origin = origin
+        self._blocked = blocked  # row 0 = lowest y
+
+    @classmethod
+    def load(cls, yaml_path: str) -> "OccupancyMap":
+        text = open(yaml_path, encoding="utf-8").read()
+        resolution = float(re.search(r"resolution:\s*([-\d.eE]+)", text).group(1))
+        origin_block = text.split("origin:", 1)[1]
+        ox, oy = (float(v) for v in re.findall(r"-?\d+(?:\.\d+)?(?:[eE]-?\d+)?", origin_block)[:2])
+        image = re.search(r"image:\s*(\S+)", text).group(1)
+        neg = re.search(r"negate:\s*(\d)", text)
+        negate = int(neg.group(1)) if neg else 0
+        fr = re.search(r"free_thresh:\s*([\d.]+)", text)
+        free = float(fr.group(1)) if fr else 0.196
+        raw = open(os.path.join(os.path.dirname(yaml_path), image), "rb").read()
+        m = re.match(rb"P5\s+(?:#[^\n]*\n\s*)*(\d+)\s+(\d+)\s+(\d+)\s", raw)
+        if m is None:
+            raise ValueError(f"{image}: not a binary PGM")
+        w, h, maxval = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        px = raw[m.end():m.end() + w * h]
+        blocked = [False] * (w * h)
+        for row in range(h):
+            y_index = h - 1 - row  # PGM row 0 is the top (highest y)
+            for col in range(w):
+                v = px[row * w + col] / maxval
+                p = v if negate else 1.0 - v  # occupancy probability
+                blocked[y_index * w + col] = p > free + 1e-6  # occupied or unknown: the robot cannot be there
+        return cls(w, h, resolution, (ox, oy), blocked)
+
+    def blocked(self, x: float, y: float) -> bool:
+        i = int(math.floor((x - self.origin[0]) / self.resolution))
+        j = int(math.floor((y - self.origin[1]) / self.resolution))
+        if i < 0 or j < 0 or i >= self.width or j >= self.height:
+            return True
+        return self._blocked[j * self.width + i]
+
+
+@dataclass(frozen=True)
+class StraightMove:
+    """A straight drive at a fixed heading; reverse = the robot backs along it."""
+
+    start: Point
+    end: Point
+    yaw: float
+    reverse: bool
+
+    @property
+    def length(self) -> float:
+        return math.hypot(self.end[0] - self.start[0], self.end[1] - self.start[1])
+
+    def poses(self, step: float = 0.05) -> list[Pose]:
+        n = max(1, int(math.ceil(self.length / step)))
+        return [(self.start[0] + (self.end[0] - self.start[0]) * k / n,
+                 self.start[1] + (self.end[1] - self.start[1]) * k / n, self.yaw) for k in range(n + 1)]
+
+
+@dataclass(frozen=True)
+class DockPlan:
+    exit: Optional[StraightMove] = None  # leave a bay straight before anything else
+    approach: Optional[Pose] = None  # Nav2 goal: the turning point, at the endpoint heading (None: the goal itself)
+    run_in: Optional[StraightMove] = None  # straight drive onto the endpoint
+
+    @property
+    def plain(self) -> bool:
+        return self.exit is None and self.approach is None and self.run_in is None
+
+
+class DockingGeometry:
+    def __init__(
+        self,
+        grid: OccupancyMap,
+        footprint: Sequence[Point],
+        *,
+        padding: float = 0.03,
+        max_dist: float = 0.9,
+        step: float = 0.05,
+        turn_step_rad: float = math.radians(10.0),
+        strict_extra_padding: float = 0.05,
+        min_run_in: float = 0.0,
+    ) -> None:
+        self.grid = grid
+        # > 0: every goal is approached by a straight run of at least this length along the endpoint heading, after a
+        # turn at a turning point that far out (2026-11-15, MAP-ONE-V013 SHELF-B-2 / SHELF-C-1: Nav2 stopped on the edge
+        # of the 0.12 m circle from the side, the in-place turn onto the endpoint heading slid the skid-steer chassis
+        # out of it again, and the gateway re-sent the goal: the robot shuffled at the shelf for ~2 min).
+        self.min_run_in = max(0.0, float(min_run_in))
+        self.max_dist = max_dist
+        self.step = step
+        self.turn_step = turn_step_rad
+        self._outline = self._sample_outline(self._pad(footprint, padding), 0.5 * grid.resolution)
+        # After a failure the map was too optimistic (the costmap / collision monitor would not let the robot turn
+        # where the static map says it can): look for turning points with a wider margin first.
+        self._strict_outline = self._sample_outline(
+            self._pad(footprint, padding + strict_extra_padding), 0.5 * grid.resolution)
+
+    @staticmethod
+    def _pad(footprint: Sequence[Point], padding: float) -> list[Point]:
+        out = []
+        for x, y in footprint:
+            out.append((x + math.copysign(padding, x) if x else x, y + math.copysign(padding, y) if y else y))
+        return out
+
+    @staticmethod
+    def _sample_outline(poly: Sequence[Point], spacing: float) -> list[Point]:
+        pts: list[Point] = []
+        for k in range(len(poly)):
+            (ax, ay), (bx, by) = poly[k], poly[(k + 1) % len(poly)]
+            n = max(1, int(math.ceil(math.hypot(bx - ax, by - ay) / spacing)))
+            pts += [(ax + (bx - ax) * i / n, ay + (by - ay) * i / n) for i in range(n)]
+        # A coarse interior grid too: a thin wall can sit between two outline samples of a moved footprint.
+        xs = [p[0] for p in poly]
+        ys = [p[1] for p in poly]
+        nx = max(1, int((max(xs) - min(xs)) / (2 * spacing)))
+        ny = max(1, int((max(ys) - min(ys)) / (2 * spacing)))
+        for i in range(nx + 1):
+            for j in range(ny + 1):
+                pts.append((min(xs) + (max(xs) - min(xs)) * i / nx, min(ys) + (max(ys) - min(ys)) * j / ny))
+        return pts
+
+    def free(self, x: float, y: float, yaw: float, *, strict: bool = False) -> bool:
+        c, s = math.cos(yaw), math.sin(yaw)
+        outline = self._strict_outline if strict else self._outline
+        return not any(self.grid.blocked(x + c * px - s * py, y + s * px + c * py) for px, py in outline)
+
+    def can_turn(self, x: float, y: float, *, strict: bool = False) -> bool:
+        n = int(math.ceil(2 * math.pi / self.turn_step))
+        return all(self.free(x, y, -math.pi + k * 2 * math.pi / n, strict=strict) for k in range(n))
+
+    def _clear_line(self, a: Point, b: Point, yaw: float) -> bool:
+        n = max(1, int(math.ceil(math.hypot(b[0] - a[0], b[1] - a[1]) / (0.5 * self.grid.resolution))))
+        return all(self.free(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n, yaw) for k in range(n + 1))
+
+    def _turning_point(self, origin: Pose, direction: float, *, strict: bool = False,
+                       min_dist: float = 0.0) -> Optional[Point]:
+        """Nearest point on the line from origin along direction (yaw + 0 or pi) where the footprint, kept at the
+        origin heading on the way, can turn. None if the line is blocked first or none is within max_dist.
+        strict: prefer a point with the wider margin, else the nearest ordinary one."""
+        x0, y0, yaw = origin
+        ux, uy = math.cos(direction), math.sin(direction)
+        prev = (x0, y0)
+        d = self.step
+        fallback: Optional[Point] = None
+        while d <= self.max_dist + 1e-9:
+            p = (x0 + d * ux, y0 + d * uy)
+            if not self._clear_line(prev, p, yaw):
+                break
+            if d < min_dist - 1e-9:
+                prev = p
+                d += self.step
+                continue
+            if self.can_turn(*p, strict=strict):
+                return p
+            if strict and fallback is None and self.can_turn(*p):
+                fallback = p
+            prev = p
+            d += self.step
+        return fallback
+
+    def plan(
+        self, start: Pose, goal: Pose, *, force_dock: bool = False, refine: bool = True,
+        avoid_exit_reverse: Optional[bool] = None,
+    ) -> DockPlan:
+        """force_dock: dock even where the static map says the robot can turn at the goal (a turn there just failed);
+        turning points then need the wider margin. refine=False: never the on-axis shortcut (a straight run in just
+        failed, so back out and come in again). avoid_exit_reverse: do not leave the start in that direction (an exit
+        that way just failed)."""
+        gx, gy, gyaw = goal
+        strict = force_dock
+        goal_needs_dock = force_dock or self.min_run_in > 0.0 or not self.can_turn(gx, gy)
+
+        # Already on the axis of a bay endpoint (a refine): straight onto it, nothing else.
+        if goal_needs_dock and refine:
+            ux, uy = math.cos(gyaw), math.sin(gyaw)
+            rx, ry = start[0] - gx, start[1] - gy
+            along, across = rx * ux + ry * uy, -rx * uy + ry * ux
+            if (abs(across) <= 0.08 and abs(_wrap(start[2] - gyaw)) <= 0.35 and abs(along) <= self.max_dist
+                    and self._clear_line((start[0], start[1]), (gx, gy), gyaw)):
+                return DockPlan(run_in=StraightMove((start[0], start[1]), (gx, gy), gyaw, reverse=along > 0))
+
+        exit_move: Optional[StraightMove] = None
+        if not self.can_turn(start[0], start[1], strict=strict):
+            # Straight out along the robot's own heading; if it stands a little crooked in the endpoint's bay and that
+            # line touches a wall, along the bay axis (the controller straightens the small heading error as it goes).
+            headings = [start[2]]
+            if goal_needs_dock:
+                axis = gyaw if abs(_wrap(start[2] - gyaw)) <= math.pi / 2 else _wrap(gyaw + math.pi)
+                if 1e-3 < abs(_wrap(start[2] - axis)) <= 0.5:
+                    headings.append(axis)
+            for heading in headings:
+                candidates = []
+                for direction, reverse in ((heading, False), (heading + math.pi, True)):
+                    if avoid_exit_reverse is not None and reverse == avoid_exit_reverse:
+                        continue
+                    p = self._turning_point((start[0], start[1], heading), direction, strict=strict)
+                    if p is not None:
+                        candidates.append((math.hypot(p[0] - start[0], p[1] - start[1]), reverse, p))
+                if candidates:
+                    _, reverse, p = min(candidates)
+                    exit_move = StraightMove((start[0], start[1]), p, heading, reverse)
+                    break
+
+        approach: Optional[Pose] = None
+        run_in: Optional[StraightMove] = None
+        if goal_needs_dock:
+            def turning_points(min_dist: float) -> list:
+                found = []
+                # forward in: turn behind the endpoint; backward in: turn in front of it and back onto it
+                for direction, reverse in ((gyaw + math.pi, False), (gyaw, True)):
+                    p = self._turning_point(goal, direction, strict=strict, min_dist=min_dist)
+                    if p is not None:
+                        found.append((math.hypot(p[0] - gx, p[1] - gy) + (0.0 if not reverse else 0.01), reverse, p))
+                return found
+
+            candidates = turning_points(self.min_run_in)
+            if not candidates and self.min_run_in > 0.0:
+                candidates = turning_points(0.0)  # no straight run that long on either side: the nearest turning point
+            if candidates:
+                _, reverse, p = min(candidates)
+                approach = (p[0], p[1], gyaw)
+                run_in = StraightMove(p, (gx, gy), gyaw, reverse)
+        return DockPlan(exit=exit_move, approach=approach, run_in=run_in)

@@ -143,7 +143,8 @@ class RrcLiteNode(Node):
             return
         stamp = self.get_clock().now().to_msg()
         if isinstance(report, p.ImuSample):
-            self._imu_times.append(t)
+            with self._lock:  # appended on the link thread, read by the status timer
+                self._imu_times.append(t)
             m = ImuRaw()
             m.header.stamp = stamp
             m.header.frame_id = "imu_link"
@@ -184,7 +185,11 @@ class RrcLiteNode(Node):
 
     def _imu_rate(self) -> float:
         now = time.monotonic()
-        recent = [t for t in self._imu_times if now - t <= 2.0]
+        # Regression 2026-11-15 (fleet mode, load ~16): iterating while the link thread appended raised
+        # "deque mutated during iteration" and killed the driver.
+        with self._lock:
+            times = list(self._imu_times)
+        recent = [t for t in times if now - t <= 2.0]
         return len(recent) / 2.0
 
     def _publish_status(self) -> None:

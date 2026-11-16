@@ -47,3 +47,9 @@ Xem docstring trong `warotrans_rbt002_control_gateway/app.py`. Token qua `?token
 ## Serial
 
 Xem `docs/audit/rrc_lite_protocol.md`.
+
+## Camera (warotrans_rbt002_camera)
+
+- `http://<robot>:8081/stream`: MJPEG `multipart/x-mixed-replace; boundary=frame`, 1280×720 @ 15 fps. Cùng hợp đồng với `StreamRobotCamera` của warotrans-system (`RobotCamera:Robots:RBT-002`).
+- `http://<robot>:8081/snapshot.jpg`, `/health`, `/` (trang xem nhanh).
+- `rpicam-vid` chỉ chạy khi có người xem. Cần libcamera và rpicam-apps của Raspberry Pi (`tools/build_camera_stack.sh`).

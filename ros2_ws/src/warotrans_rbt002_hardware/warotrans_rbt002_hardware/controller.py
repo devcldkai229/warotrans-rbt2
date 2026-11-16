@@ -46,6 +46,10 @@ class ControllerConfig:
     default_speed_scale: float = 0.5
     percent_mode_without_geometry: bool = True
     percent_accel_per_s: float = 1.5  # fraction of full speed per second (percent mode)
+    # Fleet mode (unattended, Nav2 + authority gate in front): enter ENABLED by itself once every blocker has
+    # been clear for auto_enable_stable_s, also after a fault. Manual mode keeps this off (operator arms).
+    auto_enable: bool = False
+    auto_enable_stable_s: float = 2.0
 
     def __post_init__(self) -> None:
         for n in ("max_wheel_rps", "max_linear_mps", "max_angular_radps", "max_linear_accel",
@@ -108,6 +112,7 @@ class BaseController:
         self._calib: Optional[tuple[int, float, float]] = None  # port, rps, until
         self._setpoints = [0.0] * 4
         self._sent_stop_after_safe = False
+        self._clear_since: Optional[float] = None  # auto_enable: blockers clear since
 
     # ------------------------------------------------------------------ inputs
 
@@ -233,6 +238,17 @@ class BaseController:
             if blockers:
                 self._enter_safe()
                 self.faults = ["forced SAFE"] + blockers
+
+        if self.mode == SAFE and self.cfg.auto_enable:
+            if self.blockers(ENABLED, now):
+                self._clear_since = None
+            elif self._clear_since is None:
+                self._clear_since = now
+            elif now - self._clear_since >= self.cfg.auto_enable_stable_s:
+                faults = list(self.faults)
+                self.request_mode(ENABLED, now)
+                self.faults = faults  # keep the last fault visible for diagnostics
+                self._clear_since = None
 
         if self.mode == SAFE:
             if not self._sent_stop_after_safe:

@@ -94,3 +94,13 @@ describe("motor map", () => {
     expect(rows[3]).toEqual({ wheel: "FR", plusForward: false });
   });
 });
+
+import { sonarZone } from "./format";
+
+describe("sonar zone (matches firmware LED thresholds)", () => {
+  it.each([
+    [0.8, "far"], [0.5, "mid"], [0.3, "mid"], [0.2, "mid"], [0.19, "near"], [0, null], [null, null],
+  ])("%s m -> %s", (r, z) => {
+    expect(sonarZone(r as number | null)).toBe(z);
+  });
+});

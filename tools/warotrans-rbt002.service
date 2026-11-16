@@ -19,7 +19,8 @@ Environment=ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 # jump lost each other ~5 min later (rrc_lite fine, base_controller saw link/battery stale -> UI "timed out").
 # Wait up to 90 s for the first NTP sync; start anyway when offline.
 ExecStartPre=/bin/bash -c 'for i in $(seq 1 90); do [ "$(timedatectl show -p NTPSynchronized --value)" = yes ] && exit 0; sleep 1; done; echo "NTP not synced after 90 s, starting anyway"'
-ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/waro/ros2_ws/install/setup.bash && source /home/waro/warotrans_rbt2_ws/install/setup.bash && exec ros2 launch warotrans_rbt002_bringup bringup.launch.py motors_enabled:=${MOTORS_ENABLED}'
+# MODE=manual|fleet, BROKER, BUNDLE, MOTORS_ENABLED come from the EnvironmentFile (tools/rbt2_mode.sh)
+ExecStart=/home/waro/warotrans_rbt2_ws/tools/rbt2_start.sh
 KillSignal=SIGINT
 TimeoutStopSec=20
 TimeoutStartSec=150

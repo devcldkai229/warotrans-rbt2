@@ -225,3 +225,24 @@ def test_runtime_calibration_update_refused_while_enabled():
     assert c.update_calibration(GEO, MAP)[0]
     assert c.request_mode(ENABLED, 0.0)[0]
     assert not c.update_calibration(GEO, None)[0]
+
+
+def test_auto_enable_after_stable_clear_and_after_fault():
+    c = BaseController(cfg(auto_enable=True, auto_enable_stable_s=1.0))
+    t, _ = tick(c, 0.0, 0.5)
+    assert c.mode == SAFE  # not yet stable for 1 s
+    t, _ = tick(c, t, 0.7)
+    assert c.mode == ENABLED
+    c.on_link(False, t)
+    c.step(t + 0.02)
+    assert c.mode == SAFE and c.faults
+    t, _ = tick(c, t + 0.02, 0.5)  # healthy again but not long enough
+    assert c.mode == SAFE
+    t, _ = tick(c, t, 0.7)
+    assert c.mode == ENABLED
+
+
+def test_auto_enable_off_never_enables():
+    c = BaseController(cfg())
+    tick(c, 0.0, 5.0)
+    assert c.mode == SAFE

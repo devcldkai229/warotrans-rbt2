@@ -28,6 +28,31 @@ Cập nhật: 2026-11-15
 - [ ] Autostart systemd: script `tools/install_autostart.sh` có sẵn nhưng chưa cài (cần anh duyệt, vì là thay đổi hệ thống lúc boot).
 - [ ] Bất kỳ chuyển động motor nào: **chưa thử**, người vận hành sẽ làm theo `docs/first_motion_procedure.md`
 
+- [x] 2026-11-15: firmware v2 đã nạp (đèn siêu âm đổi màu: xanh > 50, vàng 20–50, đỏ < 20 cm). Sau khi nạp: 0 lỗi CRC, siêu âm 10 Hz.
+- [x] 2026-11-15: camera chạy (imx708_wide, libcamera và rpicam-apps của Raspberry Pi build từ source vào /usr/local). MJPEG 1280×720 @ 15 fps ở `:8081/stream`. Snapshot ra ảnh đúng chiều. Pi 54 °C, CPU khoảng 28 % khi stream.
+
+## Đưa RBT-002 về cùng chức năng RBT-001 (plan 2026-11-15)
+- [x] **Pha 0:** copy core (navigation, localization, slam, lane_planner, fleet, map V013) bằng `tools/sync_from_rbt1.py`, nguồn `fix/final-rbt1-precise-arrival@d44bd23` cùng working tree chưa commit. `colcon test` 553 test pass. Pi đã cài Nav2, slam_toolbox, robot_localization và build đủ 13 package.
+- [x] **Overlay RBT-002** (`warotrans_rbt002_bringup/config/rbt002/`):
+  - Nav2: footprint 0.30 × 0.264 m, tốc độ 0.30 m/s;
+  - EKF: chỉ fuse gyro z, vì QMI8658 không có orientation;
+  - AMCL: theo C1, alpha cao hơn cho mecanum;
+  - gateway: RBT-002, không có nút xác nhận;
+  - `fleet_base.yaml`: `/cmd_vel_motor` chỉ nhận từ `cmd_vel_authority_gate`, `auto_enable`.
+- [x] `fleet.launch.py` và service một-chế-độ (`MODE=manual|fleet`, `tools/rbt2_mode.sh`).
+- [x] **Chạy thử fleet trên Pi (motor tắt, chưa nối MQTT), 2026-11-15:**
+  - toàn bộ lifecycle Nav2 `active`;
+  - đủ các action `navigate_to_pose`, `follow_path`, `guarded_spin` / `guarded_backup`;
+  - `/cmd_vel_motor` chỉ có gate publish;
+  - TF `map→odom→base_footprint→laser/imu_link` đầy đủ;
+  - EKF 22–28 Hz.
+  - Load khoảng 9 trên 4 nhân: cần theo dõi.
+- [x] Sửa bug: `rrc_lite_node` crash do deque bị sửa đồng thời giữa 2 thread khi CPU tải cao.
+- [ ] Pha 1 (cần anh ở robot): đếm encoder 10 vòng, hiệu chuẩn odom thẳng/xoay, hướng IMU, tốc độ tối đa, watchdog khi đang chạy.
+- [ ] Pha 2–3: AMCL ±90°, NavigateToPose thật, các leg V013, docking.
+- [ ] Pha 4: đăng ký RBT-002 trong backend (cần anh cho phép ghi dev DB), `Traffic:Footprint` 0.32 × 0.27, home `EP-OUTBOUND`, camera.
+- [ ] Pha 5: harness 2 robot, rồi chạy tuần tự, rồi đồng thời.
+
 ## Đã xác minh trong mô phỏng (mock board, WSL Jazzy)
 - [x] `colcon build`: 7 package. `colcon test`: tất cả pass (xem lần chạy gần nhất). Web: vitest 16 test, `npm run build` OK
 - [x] E2E qua WebSocket thật (`tools/mock_e2e.py`), 27/27 bước cho cả profile `stock` và `patched`: lease, ENABLE bị chặn khi chưa có lease, tiến/xoay không trộn, deadman, giới hạn tốc độ, STOP từ client khác, calibration 1 motor, đóng socket thì dừng, `/odom` và `/ultrasonic/front` chỉ có với firmware patch

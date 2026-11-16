@@ -10,6 +10,13 @@
 | Vào bootloader qua USB | `stm32flash -i "-rts&dtr,-dtr,,,,dtr,,,,:rts&dtr,-dtr,,,,dtr"` (6/6 lần). Chuỗi ngắn hơn thì không ổn định |
 | Kiểm chứng sau nạp | gói encoder 50 Hz ngay từ boot, ultrasonic 10 Hz (44–55 mm), driver nhận profile `patched`, 0 lỗi CRC. Bật pin thì bánh đứng yên |
 
+**v2 (2026-11-15, đã nạp):** thêm mục 9, đèn cảm biến siêu âm đổi màu theo khoảng cách.
+- Ngưỡng: xanh > 50 cm, vàng 20–50 cm, đỏ < 20 cm, trễ 2 cm.
+- Ghi một lần 7 byte vào thanh ghi 2–8 của sonar, chỉ khi đổi vùng màu. Đọc lỗi (0 mm) thì giữ nguyên màu.
+- Đã kiểm logic chuyển vùng bằng gcc host (14 mẫu, 5 lần ghi).
+- `rrc_lite_warotrans.bin` 61 912 byte, SHA256 `3ff5006695c08cba23dcd755f3d7c402bb6e9fcdbd40eb0765f9dfa917c719dc`.
+- Bản v1 lưu ở `~/warotrans_rbt2_backups/rrc_lite_warotrans_v1_f7f8e937.bin`.
+
 **Rollback:** dừng service, tắt pin, rồi chạy trên Pi:
 
 ```

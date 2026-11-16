@@ -55,6 +55,8 @@ class BaseControllerNode(Node):
         d("feedback_timeout_s", 0.2)
         d("percent_mode_without_geometry", True)
         d("percent_accel_per_s", 1.5)
+        d("auto_enable", False)
+        d("auto_enable_stable_s", 2.0)
         g = lambda n: self.get_parameter(n).value  # noqa: E731
 
         geometry = read_geometry(self)
@@ -69,7 +71,8 @@ class BaseControllerNode(Node):
             calibration_max_duration_ms=int(g("calibration_max_duration_ms")),
             default_speed_scale=float(g("default_speed_scale")),
             percent_mode_without_geometry=bool(g("percent_mode_without_geometry")),
-            percent_accel_per_s=float(g("percent_accel_per_s"))))
+            percent_accel_per_s=float(g("percent_accel_per_s")),
+            auto_enable=bool(g("auto_enable")), auto_enable_stable_s=float(g("auto_enable_stable_s"))))
         self._wheel_names = motor_map.wheel_of_port() if motor_map else ["?"] * 4
         if geometry is None:
             self.get_logger().warning(f"wheel geometry not configured (CHƯA XÁC NHẬN): drive units = {self._ctl.units}")

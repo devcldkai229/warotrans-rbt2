@@ -1,0 +1,560 @@
+# =============================================================================
+# WaroTrans Nav2 Parameters (Phase 0)
+# =============================================================================
+# PURPOSE
+#   Full Nav2 stack configuration for autonomous navigation.
+#
+# ROBOT SPECS (from calibration.yaml / geometry.yaml)
+#   - Chassis: 0.320 m × 0.260 m
+#   - Footprint: [[0.16,0.13],[0.16,-0.13],[-0.16,-0.13],[-0.16,0.13]]
+#   - max_linear: 0.128 m/s @ 40% PWM (PROVISIONAL)
+#   - max_angular: 0.56 rad/s @ 40% PWM (PROVISIONAL)
+#   - 2026-11-13: cruise 0.40 m/s (operator), SPEED zones 0.20 m/s; max_vel_theta=0.6
+#
+# TUNING markers indicate values that may need adjustment
+# PROVISIONAL markers indicate values pending real measurement
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# BT Navigator
+# -----------------------------------------------------------------------------
+bt_navigator:
+  ros__parameters:
+    use_sim_time: false
+    global_frame: map
+    robot_base_frame: base_footprint
+    odom_topic: /odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    # ms each BT node waits for its action server when the tree loads. 1000 was too short on a loaded
+    # machine (Gazebo GUI in WSL, Pi 5): "wait" not ready → bt_navigator activation fails → every goal rejected.
+    wait_for_service_timeout: 5000
+    action_server_result_timeout: 900.0
+    navigators: ["navigate_to_pose", "navigate_through_poses"]
+    navigate_to_pose:
+      plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
+    navigate_through_poses:
+      plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
+    # Resilient BT: FollowPath fail → clear local → wait → replan (không abort ngay)
+    # Absolute path set by navigation.launch.py if left empty here.
+    default_nav_to_pose_bt_xml: ""
+    # default_nav_through_poses_bt_xml: ""
+    error_code_names:
+      - compute_path_error_code
+      - follow_path_error_code
+
+# -----------------------------------------------------------------------------
+# Controller Server (Regulated Pure Pursuit)
+# -----------------------------------------------------------------------------
+controller_server:
+  ros__parameters:
+    use_sim_time: false
+    controller_frequency: 10.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5  # non-holonomic
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 1.0
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["general_goal_checker", "docking_goal_checker", "align_goal_checker"]
+    # FollowPath = forward only. FollowPathReverse = dedicated RPP with allow_reversing
+    # (never enable reverse on the primary Forward controller — Active Mode contract v10).
+    controller_plugins: ["FollowPath", "FollowPathReverse", "FollowPathAlign", "FollowPathDock"]
+    odom_topic: /odom
+    # Phase 3: SpeedFilter → controller (only when enable_costmap_filters:=true)
+    speed_limit_topic: "speed_limit"
+
+    # CRITICAL: esp32_bridge_node expects geometry_msgs/Twist, NOT TwistStamped
+    enable_stamped_cmd_vel: false
+
+    progress_checker:
+      # 2026-11-15: PoseProgressChecker, a turn in place is progress too. SimpleProgressChecker only counted 0.05 m of
+      # travel, so the 1 deg final align on an endpoint (no travel) was aborted as "Failed to make progress".
+      plugin: "nav2_controller::PoseProgressChecker"
+      required_movement_angle: 0.05
+      # 2026-10-16: 45 s hid a stalled robot for most of a minute per attempt (the T-junction
+      # "hang"). With deadband compensation the robot moves 0.10 m in ~1-3 s, so 20 s is ample.
+      # 0.10 → 0.05: a docking run in can be 0.05–0.15 m long in total.
+      required_movement_radius: 0.05
+      movement_time_allowance: 20.0
+
+    general_goal_checker:
+      stateful: true
+      plugin: "nav2_controller::SimpleGoalChecker"
+      # Endpoints ask for 0.08 m: the checker passes at the first pose inside this, and rig runs stop right at its edge.
+      # 2026-11-11: 0.07 → 0.05 and yaw 0.13 → 0.08 (~4.6°). The gateway then asks AMCL for an in-place update and
+      # drives the goal again if the settled pose still misses by > 0.05 m / 0.087 rad (arrival refine).
+      # 2026-11-13 operator: 0.10 m / 0.15 rad. Tighter made the robot keep pivoting on the spot to fix the last
+      # centimetres and degrees, and each pivot slid it somewhere else (endpoints position_tolerance 0.10 in the DB).
+      # 2026-11-15 operator: 0.12 m and 5 deg at every endpoint (1 deg the same day made the robot pivot and slide
+      # several times per endpoint). The gateway's last stage (align: FollowPathAlign + align_goal_checker) turns
+      # slowly onto the endpoint heading when the travel ends outside it.
+      # 2026-11-15 08:20: 0.08. Since every endpoint is docked, this checker ends the travel to the turning point
+      # (open floor): stopping on the edge of 0.12 left the robot 11-13 cm off the bay axis (SHELF-A-2).
+      xy_goal_tolerance: 0.08       # metres; was 0.12, 0.10, 0.05, 0.07, earlier 0.15
+      # 2026-10-16: RViz (WSL) gửi goal luôn có yaw = 0 (17/17 goal đo được) → robot quay tại chỗ
+      # tới heading giả, open-loop vọt lố + đảo chiều liên tục. π = bỏ qua heading khi đến đích.
+      # Đặt lại 0.25 khi cần heading thật (docking) và nguồn goal gửi yaw đúng.
+      yaw_goal_tolerance: 0.0873    # radians (5°); was 0.15 (2026-11-13), 0.08, 0.13, earlier 3.14
+
+    # Docking straight moves (warotrans_fleet/docking_navigator.py): position only. A straight run in a bay cannot
+    # correct the heading; the gateway's final align step (NavigateToPose, general checker) does that.
+    docking_goal_checker:
+      stateful: true
+      plugin: "nav2_controller::SimpleGoalChecker"
+      # 2026-11-15: 0.06 -> 0.08. Within the last centimetres a lateral offset makes RPP's curvature explode and the
+      # robot turned 23 deg on the spot at the end of a reverse run in (EP-SHELF-B-1); the align stage turns instead.
+      xy_goal_tolerance: 0.08       # was 0.06, 0.03 (the last centimetres of a run in were a crawl against the wall)
+      yaw_goal_tolerance: 6.28
+
+    # Final in-place turn on the endpoint (gateway align stage, FollowPathAlign): heading only. xy wider than the
+    # 0.12 m endpoint tolerance so RPP never drives, it only rotates to the goal heading. 5 deg, operator 2026-11-15.
+    align_goal_checker:
+      stateful: true
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.15
+      yaw_goal_tolerance: 0.0873
+
+    FollowPath:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      # 2026-11-13 operator: cruise 0.10 -> 0.40 m/s (at 0.10 the wheels slipped and the pose drifted from the UI).
+      # The SPEED zone mask caps it at 0.20 m/s there; approach scaling slows it before the goal.
+      # 2026-11-15 operator: default cruise 0.35 m/s, SPEED zones 0.25 m/s.
+      desired_linear_vel: 0.35
+      # Lookahead ~1 chassis length. With inflation now keeping the path centred in the aisle
+      # (no corner hugging), 0.30 tracks 90° turns without oscillating.
+      # 2026-11-11: 0.30/0.20 → 0.22/0.15. A carrot 0.30 m ahead starts the turn early and the body cuts the corner
+      # toward the opposite lane (lane centres are 0.66 m apart on MAP-ONE).
+      lookahead_dist: 0.22
+      min_lookahead_dist: 0.15
+      max_lookahead_dist: 0.45
+      lookahead_time: 0.8
+      # In-place turn rate. 0.35 rad/s (≈25 % PWM, open loop) stalled the skid-steer wheels at
+      # T-junctions; 0.5 rad/s + firmware min_start_duty / PI loop actually turns the chassis.
+      rotate_to_heading_angular_vel: 0.5
+      transform_tolerance: 0.3
+      # 0.40 m/s with a fixed 0.22 m carrot oscillates: scale it with speed (0.8 s ahead, 0.15..0.45 m).
+      use_velocity_scaled_lookahead_dist: true
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.6
+      # Class D: abort FollowPath when carrot path intersects lethal/high cost (shelves)
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+      use_regulated_linear_velocity_scaling: true
+      # Slow down near racks/walls (inflation cost) instead of driving full speed into a corner.
+      use_cost_regulated_linear_velocity_scaling: true
+      cost_scaling_dist: 0.4
+      cost_scaling_gain: 1.0
+      inflation_cost_scaling_factor: 4.0   # must equal the costmaps' cost_scaling_factor
+      # Slow earlier on tight curves (warehouse 90°); still above crawl min_speed
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.05
+      use_fixed_curvature_lookahead: false
+      curvature_lookahead_dist: 0.25
+      # Class A: stop-and-rotate when heading error large before translating (skid-steer 90° turns)
+      use_rotate_to_heading: true
+      # 0.785 → 0.5 (~29°): at a 90° corner the robot stops and pivots near the lane centre instead of arcing across.
+      rotate_to_heading_min_angle: 0.5
+      max_angular_accel: 0.8       # TUNING
+      # Slightly wider latch after enabling rotate-to-heading (in-place spin can leave path briefly)
+      max_robot_pose_search_dist: 2.0
+      interpolate_curvature_after_goal: false
+      # Forward grant only — reverse bay exit uses FollowPathReverse.
+      allow_reversing: false
+
+    FollowPathReverse:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      desired_linear_vel: 0.20     # straight bay moves; was 0.08
+      lookahead_dist: 0.30
+      min_lookahead_dist: 0.20
+      max_lookahead_dist: 0.45
+      lookahead_time: 1.5
+      rotate_to_heading_angular_vel: 0.5
+      transform_tolerance: 0.3
+      use_velocity_scaled_lookahead_dist: false
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.6
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+      use_regulated_linear_velocity_scaling: true
+      use_cost_regulated_linear_velocity_scaling: true
+      cost_scaling_dist: 0.4
+      cost_scaling_gain: 1.0
+      inflation_cost_scaling_factor: 4.0
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.05
+      use_fixed_curvature_lookahead: true   # needed by interpolate_curvature_after_goal (below)
+      curvature_lookahead_dist: 0.25
+      # Reverse path yaw already faces travel direction; do not rotate-to-heading on reverse.
+      use_rotate_to_heading: false
+      max_angular_accel: 0.8
+      max_robot_pose_search_dist: 2.0
+      # 2026-11-15: curvature from a fixed 0.25 m point, projected past the goal near the end of the path. With the
+      # carrot on the goal a 4.7 cm lateral offset 7 cm before the end gave a curvature of ~19/m: the robot spun
+      # 23 deg in place instead of backing the last centimetres (EP-SHELF-B-1).
+      interpolate_curvature_after_goal: true
+      allow_reversing: true
+
+    # Straight forward docking moves (gateway run in / exit, 2026-11-15): every endpoint is entered by a straight run of
+    # >= 0.25 m along its heading (docking_min_run_in_m). Slow, no cost-regulated crawl next to the shelf, curvature
+    # from a fixed point projected past the goal so a few cm of lateral offset never spin the robot near the end.
+    FollowPathDock:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      desired_linear_vel: 0.15
+      lookahead_dist: 0.25
+      min_lookahead_dist: 0.20
+      max_lookahead_dist: 0.35
+      lookahead_time: 1.5
+      rotate_to_heading_angular_vel: 0.3
+      transform_tolerance: 0.3
+      use_velocity_scaled_lookahead_dist: false
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.3
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+      use_regulated_linear_velocity_scaling: false
+      use_cost_regulated_linear_velocity_scaling: false
+      inflation_cost_scaling_factor: 4.0
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.05
+      use_fixed_curvature_lookahead: true
+      curvature_lookahead_dist: 0.25
+      interpolate_curvature_after_goal: true
+      use_rotate_to_heading: true
+      rotate_to_heading_min_angle: 0.5
+      max_angular_accel: 0.8
+      max_robot_pose_search_dist: 2.0
+      allow_reversing: false
+
+    # Final turn on the endpoint (gateway align stage, 5 deg). 0.2 rad/s = ~1.1 deg per 10 Hz cycle; the encoder PI loop holds 0.04 m/s per wheel (lab 2026-11-11), which 0.2 rad/s needs.
+    FollowPathAlign:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      desired_linear_vel: 0.05
+      lookahead_dist: 0.20
+      min_lookahead_dist: 0.15
+      max_lookahead_dist: 0.30
+      lookahead_time: 1.5
+      rotate_to_heading_angular_vel: 0.2
+      transform_tolerance: 0.3
+      use_velocity_scaled_lookahead_dist: false
+      min_approach_linear_velocity: 0.03
+      approach_velocity_scaling_dist: 0.3
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+      use_regulated_linear_velocity_scaling: false
+      use_cost_regulated_linear_velocity_scaling: false
+      inflation_cost_scaling_factor: 4.0
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.03
+      use_fixed_curvature_lookahead: false
+      curvature_lookahead_dist: 0.25
+      use_rotate_to_heading: true
+      rotate_to_heading_min_angle: 0.0
+      max_angular_accel: 0.8
+      max_robot_pose_search_dist: 2.0
+      interpolate_curvature_after_goal: false
+      allow_reversing: false
+
+# -----------------------------------------------------------------------------
+# Planner Server (NavFn Global Planner)
+# -----------------------------------------------------------------------------
+planner_server:
+  ros__parameters:
+    use_sim_time: false
+    expected_planner_frequency: 5.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner::NavfnPlanner"
+      tolerance: 0.15              # TUNING: goal tolerance in metres
+      use_astar: false             # Dijkstra by default
+      allow_unknown: true
+
+# -----------------------------------------------------------------------------
+# Smoother Server
+# -----------------------------------------------------------------------------
+smoother_server:
+  ros__parameters:
+    use_sim_time: false
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: true
+
+# -----------------------------------------------------------------------------
+# Behavior Server (recovery behaviors)
+# -----------------------------------------------------------------------------
+behavior_server:
+  ros__parameters:
+    use_sim_time: false
+    local_costmap_topic: local_costmap/costmap_raw
+    global_costmap_topic: global_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait", "assisted_teleop"]
+    spin:
+      plugin: "nav2_behaviors::Spin"
+    backup:
+      plugin: "nav2_behaviors::BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors::DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors::Wait"
+    assisted_teleop:
+      plugin: "nav2_behaviors::AssistedTeleop"
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_footprint
+    transform_tolerance: 0.3
+    simulate_ahead_time: 2.0
+    # Spin recovery: 0.1 rad/s min (≈7 % PWM) could never move the skid-steer chassis.
+    max_rotational_vel: 0.6
+    min_rotational_vel: 0.3
+    rotational_acc_lim: 0.8
+
+# -----------------------------------------------------------------------------
+# Velocity Smoother
+# -----------------------------------------------------------------------------
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: false
+    smoothing_frequency: 20.0
+    scale_velocities: false
+    # Stays OPEN_LOOP on purpose: CLOSED_LOOP ramps from the *measured* velocity, so a stalled
+    # wheel (measured 0) would keep the command under the motor deadband forever.
+    feedback: "OPEN_LOOP"
+    # In the cmd_vel pipeline since 2026-10-16: controller/behaviors -> cmd_vel_nav ->
+    # velocity_smoother -> cmd_vel_smoothed -> collision_monitor -> cmd_vel -> esp32_bridge
+    max_velocity: [0.35, 0.0, 0.6]     # 2026-11-15: cruise 0.35 m/s (0.40 on 2026-11-13, 0.10 before)
+    min_velocity: [-0.20, 0.0, -0.6]   # reverse bay moves 0.20 m/s
+    max_accel: [0.5, 0.0, 1.2]
+    max_decel: [-0.5, 0.0, -1.2]
+    odom_topic: /odom
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
+
+    # CRITICAL: esp32_bridge_node expects geometry_msgs/Twist, NOT TwistStamped
+    enable_stamped_cmd_vel: false
+
+# -----------------------------------------------------------------------------
+# Waypoint Follower
+# -----------------------------------------------------------------------------
+waypoint_follower:
+  ros__parameters:
+    use_sim_time: false
+    loop_rate: 20
+    stop_on_failure: false
+    action_server_result_timeout: 900.0
+    waypoint_task_executor_plugin: "wait_at_waypoint"
+    wait_at_waypoint:
+      plugin: "nav2_waypoint_follower::WaitAtWaypoint"
+      enabled: true
+      waypoint_pause_duration: 200
+
+# -----------------------------------------------------------------------------
+# Local Costmap
+# -----------------------------------------------------------------------------
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: false
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_footprint
+      transform_tolerance: 0.3
+      rolling_window: true
+      width: 3
+      height: 3
+      resolution: 0.05             # matches map resolution
+      # Footprint 0.320 × 0.260 m (+2 cm padding for lidar/odometry noise)
+      footprint: "[[0.21, 0.13], [0.21, -0.13], [-0.11, -0.13], [-0.11, 0.13]]"  # chassis centre 0.05 m ahead of base_footprint
+      footprint_padding: 0.02
+      # 2D lidar only (ultrasonic not used): ObstacleLayer is the right (and lighter on the Pi)
+      # layer; VoxelLayer added a 3D grid for a single scan plane.
+      plugins: ["obstacle_layer", "inflation_layer"]
+      # Outdoor default: omit filters key (empty [] crashes rclcpp on Jazzy).
+      # Phase 3: enable_costmap_filters:=true merges nav2_params_filters_on.yaml
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          inf_is_valid: false
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5
+          # Ignore returns inside the chassis outline (mast / frame): never mark the robot itself.
+          obstacle_min_range: 0.20
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        # 2026-10-16: was 0.15 / 2.0 — smaller than the circumscribed radius (≈0.21 m), so NavFn
+        # planned along the shelf corners and the rectangular footprint clipped them when turning
+        # at T-junctions (RPP "collision ahead" → FollowPath fails → recovery loop). 0.35 / 4.0
+        # keeps paths in the middle of the aisle; aisles of 0.55–0.9 m stay passable
+        # (centre-line cost ≈ 130 < inscribed 253). Must match RPP inflation_cost_scaling_factor.
+        cost_scaling_factor: 4.0
+        inflation_radius: 0.35
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: false
+        filter_info_topic: "/keepout_costmap_filter_info"
+      always_send_full_costmap: true
+
+# -----------------------------------------------------------------------------
+# Global Costmap
+# -----------------------------------------------------------------------------
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_footprint
+      transform_tolerance: 0.3
+      # Footprint 0.320 × 0.260 m
+      footprint: "[[0.21, 0.13], [0.21, -0.13], [-0.11, -0.13], [-0.11, 0.13]]"  # chassis centre 0.05 m ahead of base_footprint
+      footprint_padding: 0.02
+      resolution: 0.05             # matches map resolution
+      track_unknown_space: true
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      # Outdoor default: omit filters key (empty [] crashes rclcpp on Jazzy).
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          inf_is_valid: false
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.20
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        # Same as local (see the local costmap note): path centred in the aisle.
+        cost_scaling_factor: 4.0
+        inflation_radius: 0.35
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: false
+        # Grown by the footprint: this costmap serves the planner, which only checks the robot centre.
+        filter_info_topic: "/keepout_planning_costmap_filter_info"
+      speed_filter:
+        plugin: "nav2_costmap_2d::SpeedFilter"
+        enabled: false
+        filter_info_topic: "/speed_costmap_filter_info"
+        speed_limit_topic: "/speed_limit"
+      always_send_full_costmap: true
+
+# -----------------------------------------------------------------------------
+# Phase 3 — Costmap filter mask / info servers
+# -----------------------------------------------------------------------------
+keepout_filter_mask_server:
+  ros__parameters:
+    use_sim_time: false
+    frame_id: map
+    topic_name: "/keepout_filter_mask"
+    # yaml_filename set by launch
+
+keepout_costmap_filter_info_server:
+  ros__parameters:
+    use_sim_time: false
+    type: 0
+    filter_info_topic: "/keepout_costmap_filter_info"
+    mask_topic: "/keepout_filter_mask"
+    base: 0.0
+    multiplier: 1.0
+
+keepout_planning_filter_mask_server:
+  ros__parameters:
+    use_sim_time: false
+    frame_id: map
+    topic_name: "/keepout_planning_filter_mask"
+    # yaml_filename set by launch
+
+keepout_planning_costmap_filter_info_server:
+  ros__parameters:
+    use_sim_time: false
+    type: 0
+    filter_info_topic: "/keepout_planning_costmap_filter_info"
+    mask_topic: "/keepout_planning_filter_mask"
+    base: 0.0
+    multiplier: 1.0
+
+speed_filter_mask_server:
+  ros__parameters:
+    use_sim_time: false
+    frame_id: map
+    topic_name: "/speed_filter_mask"
+    # yaml_filename set by launch
+
+speed_costmap_filter_info_server:
+  ros__parameters:
+    use_sim_time: false
+    type: 2
+    filter_info_topic: "/speed_costmap_filter_info"
+    mask_topic: "/speed_filter_mask"
+    base: 0.0
+    multiplier: 0.01
+
+# -----------------------------------------------------------------------------
+# Collision Monitor — last safety layer on /cmd_vel, LiDAR only (2026-10-16)
+# -----------------------------------------------------------------------------
+# Pipeline (navigation.launch.py): controller / behaviors -> cmd_vel_nav -> velocity_smoother
+#   -> cmd_vel_smoothed -> collision_monitor -> cmd_vel -> esp32_bridge_node.
+# "approach": simulates the padded footprint along the current command, rotation included, and
+# scales the whole command by time_to_collision / 1.2 s, so it fades out near an obstacle.
+# An in-place spin DOES sweep the corners: radius 0.234 m with padding, so a turn fades out with
+# the nose closer than ~7.4 cm or a side closer than ~10.4 cm to a wall. With 4 or more scan points
+# already inside the polygon every command becomes zero, reversing included (by design: see
+# docs/NAV2_STUCK_RECOVERY_EVIDENCE.md). Recovery starts only through recovery_guard.
+# Ultrasonic is intentionally not a source (operator decision; see
+# docs/ultrasonic-front-rear-nav2.md / nav2_collision_front_rear.yaml for that option).
+collision_monitor:
+  ros__parameters:
+    use_sim_time: false
+    base_frame_id: base_footprint
+    odom_frame_id: odom
+    cmd_vel_in_topic: cmd_vel_smoothed
+    cmd_vel_out_topic: cmd_vel
+    state_topic: collision_monitor_state
+    transform_tolerance: 0.2
+    source_timeout: 1.0
+    base_shift_correction: true
+    stop_pub_timeout: 2.0
+    # CRITICAL: esp32_bridge_node expects geometry_msgs/Twist, NOT TwistStamped
+    enable_stamped_cmd_vel: false
+    polygons: ["FootprintApproach"]
+    FootprintApproach:
+      type: "polygon"
+      action_type: "approach"
+      footprint_topic: "/local_costmap/published_footprint"
+      # 1.2 → 0.7 (2026-11-12 docking): an endpoint may legally sit a few cm from a wall; backing onto it at
+      # 0.05 m/s, 1.2 s of projection reached the wall and slowed the robot to a stall short of the goal.
+      time_before_collision: 0.7
+      simulation_time_step: 0.1
+      min_points: 4               # ignore single noisy returns
+      visualize: true
+      polygon_pub_topic: "collision_monitor_footprint"
+      enabled: true
+    observation_sources: ["scan"]
+    scan:
+      type: "scan"
+      topic: "/scan"
+      enabled: true

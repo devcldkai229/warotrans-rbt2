@@ -1,0 +1,54 @@
+<!--
+  WaroTrans resilient NavigateToPose BT
+  - Replan on distance traveled (DistanceController), NOT RateController: a 0.33 Hz replan
+    was resetting controller state while the robot was spinning to yaw at the goal.
+  - FollowPath fail → clear local costmap → wait → replan (thử lại trong goal)
+  - Recovery chỉ đi qua recovery_guard (server_name="guarded_*"): guard kiểm tra scan và grant trước khi
+    chuyển tiếp tới Nav2. Bị từ chối = action fail, robot không nhận lệnh, RoundRobin chuyển sang bước sau.
+    KHÔNG gọi BackUp/Spin trực tiếp trong cây này (test_recovery_tree.py kiểm tra điều đó).
+  - Thứ tự: lùi 0,10 m → xoay trái 45° → xoay phải 45° → xoá costmap → chờ.
+    0,10 m nằm trong phần dư ≥ 0,131 m của grant (docs/NAV2_STUCK_RECOVERY_EVIDENCE.md).
+  - Số lần thử có giới hạn: goal không giải được sẽ ABORT, không treo.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="5" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <DistanceController distance="0.50">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"
+              error_code_id="{compute_path_error_code}"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context"
+              service_name="global_costmap/clear_entirely_global_costmap"/>
+          </RecoveryNode>
+        </DistanceController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath" goal_checker_id="general_goal_checker"
+            error_code_id="{follow_path_error_code}"/>
+          <Sequence name="FollowPathRecovery">
+            <ClearEntireCostmap name="ClearLocalCostmap-Context"
+              service_name="local_costmap/clear_entirely_local_costmap"/>
+            <Wait wait_duration="1.5"/>
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"
+              error_code_id="{compute_path_error_code}"/>
+          </Sequence>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <BackUp name="GuardedBackUp" server_name="guarded_backup" backup_dist="0.10" backup_speed="0.06" time_allowance="8"/>
+          <Spin name="GuardedSpinLeft" server_name="guarded_spin" spin_dist="0.785" time_allowance="8"/>
+          <Spin name="GuardedSpinRight" server_name="guarded_spin" spin_dist="-0.785" time_allowance="8"/>
+          <Sequence name="ClearingActions">
+            <ClearEntireCostmap name="ClearLocalCostmap-Subtree"
+              service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree"
+              service_name="global_costmap/clear_entirely_global_costmap"/>
+          </Sequence>
+          <Wait wait_duration="2.0"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

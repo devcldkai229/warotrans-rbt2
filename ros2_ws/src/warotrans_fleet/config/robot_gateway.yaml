@@ -1,0 +1,68 @@
+robot_gateway:
+  ros__parameters:
+    robot_code: "RBT-001"
+    mqtt_host: "localhost"
+    mqtt_port: 1883
+    mqtt_client_id: "warotrans-robot-gateway"
+    topic_prefix: "warotrans/v1"
+    map_version_code: ""
+    map_frame: "map"
+    base_frame: "base_link"
+    odom_topic: "/odom"
+    amcl_pose_topic: "/amcl_pose"
+    navigate_action: "navigate_to_pose"
+    heartbeat_hz: 1.0
+    telemetry_hz: 5.0
+    max_transform_age_sec: 0.5
+    # --- MOVE (NAVIGATE_TO_POSE) command ---
+    # Timeout mặc định khi command không gửi payload.timeoutSeconds. 0 = không timeout.
+    default_navigate_timeout_sec: 0.0
+    # Nav2 không trả lời goal request trong khoảng này → RESULT FAILED / NAV2_UNAVAILABLE.
+    goal_response_timeout_sec: 10.0
+    # Đã gửi cancel mà Nav2 không kết thúc goal trong khoảng này → RESULT FAILED / NAV2_CANCEL_UNCONFIRMED.
+    cancel_confirm_timeout_sec: 10.0
+    # Giữ navigationStatus SUCCEEDED/FAILED/CANCELED trên telemetry bao lâu trước khi về IDLE.
+    terminal_status_hold_sec: 3.0
+    # Tần số kiểm tra timeout/deadline của command.
+    command_tick_hz: 5.0
+    # Số commandId nhớ để chống duplicate (QoS1). Command đang chạy không bao giờ bị evict.
+    command_ledger_size: 500
+    # --- Lái tay từ web (MQTT warotrans/v1/robots/{code}/teleop → /cmd_vel) ---
+    # Bỏ qua khi đang có lệnh navigate / goal Nav2. Không nhận lệnh trong teleop_deadman_sec → tự dừng.
+    teleop_enabled: true
+    cmd_vel_topic: "/cmd_vel"
+    # PROVISIONAL: bằng giới hạn motor tạm thời (calibration.yaml, nav2 desired_linear_vel 0.10).
+    teleop_max_linear: 0.10
+    teleop_max_angular: 0.45
+    teleop_deadman_sec: 0.5
+    # 0 = tắt kiểm tra sentAt (Pi có thể chưa đồng bộ giờ với backend).
+    teleop_max_message_age_sec: 0.0
+    # Drive Assist (teleop `assist`, mặc định bật): hành lang lidar rộng bằng thân xe theo hướng đang chạy.
+    # Khoảng trống < slow_gap → giảm tốc; <= stop_gap → không tiến/lùi thêm (quay tại chỗ vẫn được).
+    # Không có scan mới trong assist_max_scan_age_sec → coi như không nhìn thấy → không tiến/lùi.
+    assist_scan_topic: "/scan"
+    assist_half_length: 0.16   # geometry.yaml chassis.length / 2
+    assist_half_width: 0.13    # geometry.yaml chassis.width / 2
+    assist_stop_gap: 0.15
+    assist_slow_gap: 0.6
+    assist_max_scan_age_sec: 0.5
+    # --- HUMAN_CONFIRM button (PHYSICAL handover confirm; NOT E-stop) ---
+    # Wiring: physical pin 32 BCM12 (red) ↔ button ↔ physical pin 34 GND (black).
+    # Internal pull-up: idle=1, pressed=0 (active-low). Env: WARO_HUMAN_CONFIRM_ENABLED, WARO_HUMAN_CONFIRM_GPIO_PIN.
+    human_confirm_enabled: false
+    human_confirm_gpiochip: 4
+    human_confirm_gpio_pin: 12
+    human_confirm_active_low: true
+    human_confirm_debounce_ms: 50
+    human_confirm_min_interval_ms: 300
+    human_confirm_resend_sec: 5.0
+    # --- Traffic mode (Active Mode: segment motion authority, ADR 0009/0010) ---
+    # legacy = RouteEnforcer + NAVIGATE route grant (m?c ??nh, h�nh vi c?). active = TrafficClient.
+    # CH?A b?t active tr�n robot th?t: ch?a c� SegmentExecutor ROS v� ch?a c� handler EXTEND/RENEW/REVOKE.
+    traffic_mode: "legacy"
+    # Kh�ng nh?n authority m?i trong kho?ng n�y khi ?ang ch?y ? AUTHORITY_LOST (SafetySupervisor).
+    authority_loss_timeout_sec: 3.0
+    # Ch? khai b�o; cmd_vel_authority_gate l� node ri�ng (/cmd_vel_safe + /traffic/authority_ok ? /cmd_vel).
+    enable_authority_gate: false
+    # "" = file t?m m?c ??nh (warotrans_authority_state.json trong th? m?c temp).
+    authority_state_path: ""

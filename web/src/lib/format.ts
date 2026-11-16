@@ -45,3 +45,9 @@ export function collectIssues(t: Telemetry | null, wsConnected: boolean): Issue[
   const rank: Record<Severity, number> = { error: 0, warn: 1, info: 2 };
   return out.sort((a, b) => rank[a.severity] - rank[b.severity]);
 }
+
+// Same zones as the sonar LEDs in the RRC Lite firmware (item 9): green > 50 cm, yellow 20-50 cm, red < 20 cm.
+export function sonarZone(rangeM: number | null): "far" | "mid" | "near" | null {
+  if (rangeM === null || !Number.isFinite(rangeM) || rangeM <= 0) return null;
+  return rangeM > 0.5 ? "far" : rangeM >= 0.2 ? "mid" : "near";
+}

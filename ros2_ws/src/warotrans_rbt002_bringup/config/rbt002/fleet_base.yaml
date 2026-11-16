@@ -1,0 +1,29 @@
+# RBT-002 base in FLEET mode (loaded after rbt002.yaml + the UI calibration file).
+# Nav2 -> velocity_smoother -> collision_monitor -> cmd_vel_authority_gate -> /cmd_vel_motor -> base_controller.
+/**:
+  ros__parameters:
+    # Wheel limit for 0.30 m/s cruise: 0.30 / (pi * 0.097) = 0.98 rps. Firmware JGB528 preset caps 1.1 rps.
+    # TO VERIFY in Phase 1 (max speed test): the motors are 8 V rated 90 rpm (1.5 rps) per Hiwonder wiki.
+    max_wheel_rps: 1.0
+
+base_controller:
+  ros__parameters:
+    cmd_vel_topic: /cmd_vel_motor
+    required_cmd_vel_publisher: cmd_vel_authority_gate   # same single-publisher rule as RBT-001's ESP32 bridge
+    auto_enable: true            # unattended: ENABLED once every blocker has been clear for 2 s
+    auto_enable_stable_s: 2.0
+    default_speed_scale: 1.0     # Nav2 owns the speed; the UI slider is not used in fleet mode
+    max_linear_mps: 0.32         # >= Nav2 cruise 0.30
+    max_angular_radps: 0.7       # >= Nav2 0.6
+    max_linear_accel: 0.8        # >= velocity_smoother 0.5 (smoother shapes, base only guards)
+    max_angular_accel: 1.5
+    cmd_timeout_s: 0.5           # gate re-sends at controller rate (10-20 Hz)
+
+wheel_odom:
+  ros__parameters:
+    publish_tf: false            # ekf_filter_node owns odom->base_footprint
+
+sensor_adapter:
+  ros__parameters:
+    imu_gyro_variance: 0.0001    # probe 2026-11-15: gyro z stdev ~0.1 deg/s (1.7e-3 rad/s); conservative
+    imu_accel_variance: 0.01

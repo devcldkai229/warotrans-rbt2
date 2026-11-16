@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>warotrans_rbt002_camera</name>
+  <version>0.1.0</version>
+  <description>RBT-002 Camera Module 3 Wide MJPEG server on :8081 (/stream), the robot side of the WaroTrans fleet camera relay.</description>
+  <maintainer email="dev@warotrans.local">WaroTrans Team</maintainer>
+  <license>Proprietary</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

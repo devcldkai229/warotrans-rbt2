@@ -1,0 +1,73 @@
+# Real robot (Pi 5 + ESP32 + RPLIDAR), Semantic traffic: Nav2 plans, the backend checks traffic and grants.
+# Use with fleet.launch.py semantic_manifest:=<bundle>/semantic_manifest.json (sets semantic_map_fingerprint,
+# map_version_code and the zone JSONs) and the bringup navigation launch with enable_authority_gate:=true.
+# Base values match robot_gateway.yaml; only the semantic/safety differences are commented.
+robot_gateway:
+  ros__parameters:
+    robot_code: "RBT-001"
+    mqtt_host: ""              # broker LAN IP: launch arg mqtt_host:= or env WARO_MQTT_HOST
+    mqtt_port: 1883
+    mqtt_client_id: "warotrans-robot-gateway"
+    topic_prefix: "warotrans/v1"
+    map_version_code: ""       # from the semantic manifest
+    map_frame: "map"
+    base_frame: "base_link"
+    odom_topic: "/odom"
+    amcl_pose_topic: "/amcl_pose"
+    navigate_action: "navigate_to_pose"
+    heartbeat_hz: 1.0
+    telemetry_hz: 5.0
+    max_transform_age_sec: 0.5
+    # LOCALIZED needs an operator "2D Pose Estimate" since start and a bounded AMCL covariance: amcl.yaml boots
+    # at a provisional (0, 0, 0), which is fresh TF but not a known pose.
+    require_amcl_converged: true
+    initial_pose_topic: "/initialpose"
+    amcl_max_xy_std_m: 0.5
+    amcl_max_yaw_std_rad: 0.5
+    default_navigate_timeout_sec: 0.0   # backend sends payload.timeoutSeconds per MOVE step
+    goal_response_timeout_sec: 10.0
+    cancel_confirm_timeout_sec: 10.0
+    terminal_status_hold_sec: 3.0
+    command_tick_hz: 5.0
+    command_ledger_size: 500
+    # Manual drive publishes straight to cmd_vel_topic, which would bypass collision_monitor and the authority
+    # gate. Off while the robot is under traffic control.
+    teleop_enabled: false
+    cmd_vel_topic: "cmd_vel_safe"
+    # HUMAN_CONFIRM button (handover confirm; NOT an E-stop). Default on for lab TR→button→COMPLETED.
+    human_confirm_enabled: true
+    human_confirm_gpiochip: 4
+    human_confirm_gpio_pin: 12
+    human_confirm_active_low: true
+    human_confirm_debounce_ms: 50
+    human_confirm_min_interval_ms: 300
+    human_confirm_resend_sec: 5.0
+    # Arrival refine (2026-11-10 lab: after Nav2 SUCCEEDED the next AMCL update showed 0.16-0.28 m / 26-52 deg off).
+    # AMCL updates in place while the robot settles; a miss beyond these limits drives the same goal again.
+    amcl_nomotion_service: "/request_nomotion_update"
+    arrival_max_refines: 2
+    # 2026-11-13 operator: 0.10 m / 0.15 rad, like Nav2's goal checker and the endpoints' position_tolerance.
+    arrival_refine_xy_m: 0.12      # the NAVIGATE's positionTolerance (Endpoint, 0.12 m) wins when it is sent
+    arrival_refine_yaw_rad: 0.0873 # 5 deg, operator 2026-11-15 (1 deg earlier that day; 0.15 before)
+    docking_align_yaw_rad: 0.0873  # align step skipped when already within 5 deg
+    docking_approach_lateral_m: 0.06  # half the 0.12 m endpoint tolerance
+    docking_approach_yaw_rad: 0.0873
+    docking_min_run_in_m: 0.25     # every endpoint: turn >= 0.25 m out, then straight in along its heading
+    # 0 since 2026-11-15 08:20: re-sending the travel for a 10-13 cm miss asked RPP for a short diagonal hop, which a
+    # skid-steer cannot do; it spun on the spot for 90 s at SHELF-A-2. The run in starts on the axis and corrects it.
+    docking_max_approach_retries: 0
+    # Endpoints are for the chassis centre (base_frame); Nav2 drives nav2_base_frame, the turning centre. Goals move
+    # back, proposed plans forward, by base_footprint->base_link x (geometry.yaml). -1 = read it from TF (0 today).
+    nav2_base_frame: "base_footprint"
+    goal_base_offset_m: -1.0
+    traffic_mode: "semantic_active"
+    enable_authority_gate: true
+    authority_ok_topic: "traffic/authority_ok"   # = cmd_vel_authority_gate input (navigation.launch.py)
+    authority_loss_timeout_sec: 3.0
+    authority_state_path: ""
+    plan_topic: "plan"
+    semantic_map_fingerprint: ""   # from the semantic manifest; empty refuses to start
+    single_occupancy_json: ""
+    no_stop_json: ""
+    keepout_json: ""
+    lanes_json: ""

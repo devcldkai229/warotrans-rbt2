@@ -14,9 +14,13 @@ def load(name):
         return yaml.safe_load(f)
 
 
-def test_real_geometry_is_unmeasured_so_no_urdf():
+def test_real_geometry_publishes_only_measured_edges():
     res = build_urdf(load("geometry.yaml"))
-    assert res.urdf is None and "base_footprint_to_base_link" in res.missing and not res.mock
+    assert res.urdf is not None and not res.mock
+    assert "base_footprint->base_link" in res.published and "base_link->laser" in res.published
+    assert "base_link->ultrasonic_front" in res.published
+    assert "base_link->imu_link" in res.published  # yaw provisional 0 (only gyro z is fused)
+    assert {"camera"} <= set(res.missing)  # camera pitch still CHƯA XÁC NHẬN
     with pytest.raises(ValueError):
         build_urdf(load("geometry.yaml"), require_complete=True)
 

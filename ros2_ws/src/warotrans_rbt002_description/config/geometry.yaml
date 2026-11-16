@@ -9,42 +9,45 @@
 # for every other edge, so with this file as-is robot_state_publisher is NOT started on the real robot.
 # =============================================================================
 
-chassis:            # visual box only
-  length: null
-  width: null
-  height: null
+chassis:            # visual box only. Hiwonder wiki (Black Mecanum Wheel Chassis): 30 x 24.5 x 10 cm overall
+  length: 0.30
+  width: 0.245
+  height: 0.10
 
 base_footprint_to_base_link:
-  # base_footprint = ground point under the turning centre (centre of the 4 wheels for this mecanum base)
-  x: null
-  y: null
-  z: null           # wheel axle height above ground
-  yaw: null
+  # base_footprint = ground point under the turning centre = chassis centre (4 wheels symmetric about the plate).
+  # base_link sits at wheel-axle height. 2026-11-15.
+  x: 0.0
+  y: 0.0
+  z: 0.0485         # wheel radius (Hiwonder drawing, wheel diameter 97 mm)
+  yaw: 0.0
 
-laser:              # RPLIDAR C1 optical centre, relative to base_link
-  x: null
-  y: null
-  z: null
-  yaw: null         # mount rotation vs vehicle forward; verify with an object in front (+X)
+laser:              # RPLIDAR C1 optical centre, relative to base_link. Operator tape 2026-11-15:
+  x: -0.018         # 1.8 cm BEHIND the chassis centre
+  y: 0.0            # no left/right offset
+  z: 0.1315         # scan plane 18.0 cm above ground - 4.85 cm axle height
+  yaw: 0.0          # operator: C1 zero direction already faces forward (no 90 deg rotation, unlike RBT-001)
 
 imu:                # QMI8658 on the RRC Lite board, relative to base_link
-  x: null
-  y: null
-  z: null
-  roll: null
-  pitch: null
-  yaw: null
+  x: 0.041          # operator 2026-11-15: board centre 4.1 cm ahead of the chassis centre
+  y: 0.0            # no left/right offset
+  z: 0.0515         # operator 2026-11-15: board 10.0 cm above ground - 4.85 cm axle height
+  roll: 0.0         # board flat: probe 2026-11-15 shows gravity on +z only (|a| 0.946 g, ax ~0, ay 0.05 g)
+  pitch: 0.0
+  yaw: 0.0          # PROVISIONAL: board x-axis direction not yet checked. Harmless for now: the EKF fuses only
+                    # gyro z (board flat, +z up), which does not depend on the board's yaw. Verify before
+                    # fusing accelerations or using imu_link x/y.
 
 ultrasonic_front:   # Hiwonder I2C sonar on the RRC Lite expansion port (data needs patched firmware)
-  x: null
-  y: null
-  z: null
-  yaw: null
+  x: 0.125          # operator 2026-11-15: 2.5 cm back from the chassis front edge; front edge = 0.30 m / 2 (Hiwonder wiki)
+  y: 0.0            # centred
+  z: 0.0565         # operator 2026-11-15: sensor 10.5 cm above ground - 4.85 cm
+  yaw: 0.0          # facing forward
 
-camera:             # Camera Module 3 Wide
-  x: null
-  y: null
-  z: null
-  roll: null
-  pitch: null
-  yaw: null
+camera:             # Camera Module 3 Wide, mounted above the ultrasonic sensor (operator 2026-11-15)
+  x: 0.125          # same x as the ultrasonic sensor
+  y: 0.0            # centred
+  z: 0.1015         # 15.0 cm above ground - 4.85 cm
+  roll: 0.0
+  pitch: null       # CHƯA XÁC NHẬN: downward tilt of the camera (0 if it looks straight ahead)
+  yaw: 0.0          # facing forward

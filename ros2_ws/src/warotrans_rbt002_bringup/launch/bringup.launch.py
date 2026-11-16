@@ -10,6 +10,7 @@ Arguments
   motors_enabled  false (default) = only STOP ever reaches the board, ENABLED/CALIBRATION refused
   lidar           RPLIDAR C1 via sllidar_ros2 (default: true on the robot, false in mock)
   gateway         mobile control UI on :8080 (default true)
+  camera          MJPEG camera server on :8081/stream (default: true on the robot, false in mock)
   description     robot_state_publisher from geometry.yaml (only measured edges)
   calibration_file  motor map saved from the UI, loaded after rbt002.yaml (real robot only)
 """
@@ -31,6 +32,8 @@ def _setup(context):
     lidar = lc("lidar").lower()
     lidar = (not mock) if lidar == "auto" else lidar == "true"
     gateway = lc("gateway").lower() == "true"
+    camera = lc("camera").lower()
+    camera = (not mock) if camera == "auto" else camera == "true"
     description = lc("description").lower() == "true"
 
     bringup = get_package_share_directory("warotrans_rbt002_bringup")
@@ -67,6 +70,9 @@ def _setup(context):
     if lidar:
         actions.append(Node(package="sllidar_ros2", executable="sllidar_node", name="sllidar_node", output="screen",
                             parameters=params))
+    if camera:
+        actions.append(Node(package="warotrans_rbt002_camera", executable="camera_stream", name="camera_stream",
+                            output="screen", parameters=params))
     if gateway:
         actions.append(Node(package="warotrans_rbt002_control_gateway", executable="control_gateway",
                             name="control_gateway", output="screen", parameters=params))
@@ -86,6 +92,7 @@ def generate_launch_description():
         DeclareLaunchArgument("motors_enabled", default_value="false"),
         DeclareLaunchArgument("lidar", default_value="auto"),
         DeclareLaunchArgument("gateway", default_value="true"),
+        DeclareLaunchArgument("camera", default_value="auto"),
         DeclareLaunchArgument("description", default_value="true"),
         DeclareLaunchArgument("calibration_file", default_value="~/.config/warotrans/rbt002_calibration.yaml"),
         OpaqueFunction(function=_setup),

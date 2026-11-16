@@ -12,13 +12,14 @@
     # Motors stay electrically commanded to STOP unless the launch argument motors_enabled:=true.
     motors_enabled: false
     # Host-side wheel speed clamp, rev/s of the motor output shaft (firmware does NOT clamp the serial path).
-    # Must stay <= the firmware preset rps_limit of the configured motor_type. Conservative until measured.
-    max_wheel_rps: 0.5
+    # Must stay <= the firmware preset rps_limit of the configured motor_type.
+    # 2026-11-15 test: open to JGB37 preset rps_limit (3.0) for full-speed trial — NOT a measured JGB36-520 limit.
+    max_wheel_rps: 3.0
 
-    # --- wheel geometry (metres) — CHƯA XÁC NHẬN ---
-    wheel_radius_m: 0.0
-    half_wheelbase_m: 0.0      # front-rear axle distance / 2
-    half_track_m: 0.0          # left-right wheel centre distance / 2
+    # --- wheel geometry (metres) — 2026-11-15, docs/calibration.md §1 ---
+    wheel_radius_m: 0.0485     # Hiwonder drawing: mecanum wheel diameter 97 mm (not yet checked by roll-out)
+    half_wheelbase_m: 0.0975   # operator tape: front-rear axle centres 195 mm (both sides)
+    half_track_m: 0.1075       # operator tape: left-right wheel centres 215 mm
 
     # --- motor port map — CHƯA XÁC NHẬN, fill from Calibration mode (docs/first_motion_procedure.md) ---
     port_fl: 0                 # RRC Lite motor port (1..4) driving the front-left wheel
@@ -34,10 +35,12 @@ rrc_lite:
     port: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5AE2006352-if00
     baud: 1000000              # VERIFIED 2026-11-15 (firmware source + passive probe, 0 CRC errors)
     # Firmware motor preset, sent FIRST on every connect (before STOP). REQUIRED on hardware.
-    # VERIFIED 2026-11-15: with no MOTOR packet since power-up the RBT-002 rear wheels ran by themselves; a single
-    # set_motor_type(1 = JGB37, positive PID) stopped them (docs/safety.md). The preset's 1980 counts/rev and
-    # 3.0 rps limit are NOT verified for JGB36-520 (docs/calibration.md §3): rps values may be scaled wrong.
-    motor_type: 1
+    # 3 = JGB528: 11 poles x 4 x 1:131 = 5764 counts per output rev, rps_limit 1.1, PID 300/2/12.
+    # Operator 2026-11-15: motors are JGB37-528R131-08 (Hiwonder Black Mecanum chassis wiki: 1:131, 11 poles,
+    # 100 rpm no-load). Was 1 (JGB37, 1980 counts) = rps scaled ~2.9x wrong.
+    # History: with no MOTOR packet since power-up the rear wheels ran by themselves; sending a motor type
+    # first fixed it (docs/safety.md). Patched firmware also initialises the motors at boot.
+    motor_type: 3
     setpoint_timeout_s: 0.2
     idle_stop_period_s: 0.5
     stop_on_connect: true
@@ -59,7 +62,7 @@ base_controller:
     battery_stale_s: 3.0
     calibration_max_rps: 0.3
     calibration_max_duration_ms: 3000
-    default_speed_scale: 0.5
+    default_speed_scale: 1.0   # 2026-11-15 full-speed trial (UI 100% at boot)
     control_rate_hz: 50.0
     cmd_vel_topic: /cmd_vel
     required_cmd_vel_publisher: control_gateway
@@ -74,14 +77,14 @@ sensor_adapter:
     ultrasonic_min_range_m: 0.0
     ultrasonic_max_range_m: 0.0
     ultrasonic_fov_rad: 0.0
-    battery_soc_enabled: false
-    battery_cells_in_series: 3 # only used if battery_soc_enabled (CHƯA XÁC NHẬN)
+    battery_soc_enabled: true    # 2S2P Li-ion (operator); backend refuses dispatch with UNKNOWN battery
+    battery_cells_in_series: 2 # 2S2P, 8.4 V full (operator 2026-11-15); generic Li-ion OCV table -> LOW confidence
     battery_plausible_min_v: 5.0
-    battery_plausible_max_v: 30.0
+    battery_plausible_max_v: 9.0
 
 wheel_odom:
   ros__parameters:
-    counts_per_rev: 0.0        # encoder counts per output-shaft rev — CHƯA XÁC NHẬN (and needs patched firmware)
+    counts_per_rev: 5764.0     # JGB37-528R131 datasheet: 11 x 4 x 131. Verify: 10 hand turns of a wheel ~ 57640 counts
     publish_tf: false
 
 sllidar_node:
@@ -94,6 +97,15 @@ sllidar_node:
     inverted: false
     angle_compensate: true
     scan_mode: Standard
+
+camera_stream:
+  ros__parameters:
+    port: 8081                 # fleet contract: RobotCamera:Robots:RBT-002 = http://<robot>:8081/stream
+    width: 1280                # operator 2026-11-15: 1280x720 @ 15 fps
+    height: 720
+    framerate: 15
+    quality: 80
+    rotation: 0                # 180 if the camera image is upside down
 
 control_gateway:
   ros__parameters:
