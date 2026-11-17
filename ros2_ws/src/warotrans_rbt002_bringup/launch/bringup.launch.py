@@ -71,7 +71,7 @@ def _setup(context):
         actions.append(Node(package="sllidar_ros2", executable="sllidar_node", name="sllidar_node", output="screen",
                             parameters=params))
     if camera:
-        actions.append(Node(package="warotrans_rbt002_camera", executable="camera_stream", name="camera_stream",
+        actions.append(Node(package="warotrans_camera", executable="camera_stream", name="camera_stream",
                             output="screen", parameters=params))
     if gateway:
         actions.append(Node(package="warotrans_rbt002_control_gateway", executable="control_gateway",

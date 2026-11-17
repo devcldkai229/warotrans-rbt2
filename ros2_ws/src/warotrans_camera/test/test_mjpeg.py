@@ -1,4 +1,4 @@
-from warotrans_rbt002_camera.mjpeg import JpegSplitter
+from warotrans_camera.mjpeg import JpegSplitter
 
 
 def jpeg(payload: bytes) -> bytes:

@@ -20,7 +20,9 @@ import shutil
 import subprocess
 import sys
 
-CORE = ["warotrans_navigation", "warotrans_localization", "warotrans_slam", "warotrans_lane_planner", "warotrans_fleet", "warotrans_msgs"]
+CORE = ["warotrans_navigation", "warotrans_localization", "warotrans_slam", "warotrans_lane_planner", "warotrans_fleet", "warotrans_msgs",
+        # Evidence recording (camera owner + agent), same code on both robots; RBT-002 differences are parameters.
+        "warotrans_camera", "warotrans_evidence_agent"]
 # Map bundles to carry (the current operational map). Raw SLAM maps and old bundles stay in RBT-001's repo.
 MAP_BUNDLES = ["map_one_v014"]
 # Single files outside the core packages that core code imports at runtime/test time:

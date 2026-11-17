@@ -106,6 +106,8 @@ camera_stream:
     framerate: 15
     quality: 80
     rotation: 0                # 180 if the camera image is upside down
+    camera_model: "Raspberry Pi Camera Module 3 Wide"   # imx708_wide, nominal 120 deg (operator)
+    segment_seconds: 30.0      # evidence: one AVI per 30 s on the SSD
 
 control_gateway:
   ros__parameters:

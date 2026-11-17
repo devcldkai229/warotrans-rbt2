@@ -88,7 +88,7 @@ def _setup(context):
                               "amcl_params_file": cfg("amcl_rbt002.yaml")}.items()),
     ]
     if lc("camera").lower() == "true":
-        actions.append(Node(package="warotrans_rbt002_camera", executable="camera_stream", name="camera_stream",
+        actions.append(Node(package="warotrans_camera", executable="camera_stream", name="camera_stream",
                             output="screen", parameters=params))
     if ekf:
         actions.append(IncludeLaunchDescription(
@@ -128,6 +128,13 @@ def _setup(context):
             launch_arguments={"params_file": gateway_params,
                               "robot_code": lc("robot_code"), "mqtt_host": mqtt_host,
                               "semantic_manifest": os.path.join(bundle, "semantic_manifest.json")}.items()))
+        if lc("camera").lower() == "true" and lc("evidence").lower() == "true":
+            # Evidence: records the camera during trips and uploads to the Recorder on the backend laptop. The robot's
+            # credential is WARO_EVIDENCE_TOKEN in ~/.config/warotrans/rbt002.env (never in this repository).
+            actions.append(Node(package="warotrans_evidence_agent", executable="evidence_agent", name="evidence_agent",
+                                output="screen",
+                                parameters=[cfg("evidence_agent_rbt002.yaml"),
+                                            {"recorder_url": f"http://{mqtt_host}:5095", "robot_code": lc("robot_code")}]))
     else:
         actions.append(LogInfo(msg="[rbt002 fleet] mqtt_host empty: robot_gateway NOT started (no backend link)"))
     return actions
@@ -139,6 +146,7 @@ def generate_launch_description():
         DeclareLaunchArgument("motors_enabled", default_value="false"),
         DeclareLaunchArgument("enable_ekf", default_value="true"),
         DeclareLaunchArgument("camera", default_value="true"),
+        DeclareLaunchArgument("evidence", default_value="true"),
         DeclareLaunchArgument("nav_start_delay_sec", default_value="12.0"),
         DeclareLaunchArgument("calibration_file", default_value="~/.config/warotrans/rbt002_calibration.yaml"),
         DeclareLaunchArgument("mqtt_host", default_value="", description="MQTT broker (backend laptop)"),

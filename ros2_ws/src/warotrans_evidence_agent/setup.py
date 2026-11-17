@@ -1,6 +1,8 @@
+from glob import glob
+
 from setuptools import find_packages, setup
 
-package_name = "warotrans_rbt002_camera"
+package_name = "warotrans_evidence_agent"
 
 setup(
     name=package_name,
@@ -9,13 +11,14 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
+        ("share/" + package_name + "/config", glob("config/*.yaml")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
     maintainer="WaroTrans Team",
     maintainer_email="dev@warotrans.local",
-    description="RBT-002 MJPEG camera server",
+    description="Evidence agent (recording, spool, upload)",
     license="Proprietary",
     tests_require=["pytest"],
-    entry_points={"console_scripts": ["camera_stream = warotrans_rbt002_camera.camera_stream_node:main"]},
+    entry_points={"console_scripts": ["evidence_agent = warotrans_evidence_agent.agent_node:main"]},
 )

@@ -1,0 +1,15 @@
+# RBT-002 evidence agent. recorder_url and robot_code come from fleet.launch.py (BROKER, ROBOT_CODE).
+# Credential: WARO_EVIDENCE_TOKEN in ~/.config/warotrans/rbt002.env, issued by an admin with
+#   POST /api/evidence/admin/robots/RBT-002/credentials   (never stored in this repository)
+evidence_agent:
+  ros__parameters:
+    spool_dir: "~/warotrans_evidence"   # on the SSD (the Pi boots from it)
+    quota_gb: 20.0
+    upload_rate_limit_mbps: 2.0
+    delete_uploaded: true
+    camera_id: "front"
+    camera_model: "Raspberry Pi Camera Module 3 Wide"
+    nominal_fov_degrees: 120.0
+    width: 1280
+    height: 720
+    framerate: 15
