@@ -17,6 +17,7 @@ printf '[Login]\n# ROS 2 shared memory of the warotrans-rbt002 service must surv
   sudo tee /etc/systemd/logind.conf.d/warotrans-keep-ipc.conf >/dev/null
 sudo systemctl restart systemd-logind
 sudo install -m 644 "$HERE/warotrans-rbt002.service" /etc/systemd/system/warotrans-rbt002.service
+sudo install -m 644 "$HERE/warotrans-rbt002-broker-watch.service" /etc/systemd/system/warotrans-rbt002-broker-watch.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now warotrans-rbt002.service
+sudo systemctl enable --now warotrans-rbt002.service warotrans-rbt002-broker-watch.service
 echo "UI: http://$(hostname -I | awk '{print $1}'):8080/?token=$(grep WARO_UI_TOKEN "$ENV" | cut -d= -f2)"

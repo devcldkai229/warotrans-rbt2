@@ -29,6 +29,8 @@ MAP_BUNDLES = ["map_one_v014"]
 # path_policy_validator and export_semantic_bundle.py load semantic_map_adapter.py from
 # <src>/warotrans_simulation/scripts (not a package here: COLCON_IGNORE).
 EXTRA_FILES = ["warotrans_simulation/scripts/semantic_map_adapter.py"]
+# Robot-side tools shared by both robots (network, clock, backend discovery): copied into tools/ unchanged.
+TOOL_FILES = ["broker_discovery.py", "test_broker_discovery.py", "pi_network_setup.sh", "install_chrony.sh"]
 SKIP_DIRS = {"__pycache__", ".pytest_cache", "build", "install", "log"}
 SKIP_SUFFIX = (".pyc",)
 
@@ -108,6 +110,14 @@ def main() -> int:
                 shutil.copy2(sp, dp)
                 ignore = os.path.join(DST_SRC, rel.split("/")[0], "COLCON_IGNORE")
                 open(ignore, "a").close()
+
+    for name in TOOL_FILES:
+        sp, dp = os.path.join(args.src, "tools", name), os.path.join(HERE, name)
+        if not os.path.isfile(dp) or not filecmp.cmp(sp, dp, shallow=False):
+            changed += 1
+            print(f"  ~ tools/{name}")
+            if not args.dry_run:
+                shutil.copy2(sp, dp)
 
     commit = git(args.src, "rev-parse", "--short", "HEAD")
     branch = git(args.src, "branch", "--show-current")
