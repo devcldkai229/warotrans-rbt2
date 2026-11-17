@@ -141,9 +141,19 @@ def collect(seconds: float) -> Facts:  # pragma: no cover - needs rclpy on the P
     node.create_subscription(BatteryEstimate, "/battery/estimate", lambda m: last_battery.append(m), 10)
     buf = Buffer()
     TransformListener(buf, node)
-    end = time.monotonic() + seconds
+    # Discovery of ~30 nodes takes 10-20 s on a loaded Pi 5 (load 6-9): wait until the graph is complete (node names
+    # and the /cmd_vel_motor publisher resolved) or the time is up, but never less than 3 s for TF and AMCL.
+    start = time.monotonic()
+    end = start + seconds
+    next_look = start + 3.0
     while time.monotonic() < end:
         rclpy.spin_once(node, timeout_sec=0.05)
+        if time.monotonic() >= next_look:
+            next_look += 1.0
+            names = {name for name, _ns in node.get_node_names_and_namespaces()}
+            pubs = [i.node_name for i in node.get_publishers_info_by_topic("/cmd_vel_motor")]
+            if set(REQUIRED_NODES) <= names and pubs and "_NODE_NAME_UNKNOWN_" not in pubs:
+                break
 
     f.nodes = {name for name, _ns in node.get_node_names_and_namespaces()}
     f.cmd_vel_motor_publishers = [i.node_name for i in node.get_publishers_info_by_topic("/cmd_vel_motor")]
@@ -165,7 +175,7 @@ def main() -> int:  # pragma: no cover - needs rclpy on the Pi
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--broker", required=True, help="MQTT broker host (the backend laptop)")
     ap.add_argument("--backend", default="", help="backend base URL for the clock check, e.g. http://192.168.137.1:5090")
-    ap.add_argument("--seconds", type=float, default=6.0)
+    ap.add_argument("--seconds", type=float, default=25.0, help="longest wait for discovery")
     a = ap.parse_args()
 
     f = collect(a.seconds)
