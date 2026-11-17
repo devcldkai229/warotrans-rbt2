@@ -14,9 +14,12 @@ export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-31}
 if [ "$MODE" = fleet ]; then
   BUNDLE=${BUNDLE:-$(ros2 pkg prefix warotrans_navigation)/share/warotrans_navigation/maps/map_one_v014}
   echo "[rbt2_start] FLEET mode bundle=$BUNDLE broker=${BROKER:-<none>} motors=$MOTORS_ENABLED domain=$ROS_DOMAIN_ID sim_battery=${SIM_BATTERY_PERCENT:-off}"
-  exec ros2 launch warotrans_rbt002_bringup fleet.launch.py bundle:="$BUNDLE" motors_enabled:="$MOTORS_ENABLED" \
-       mqtt_host:="${BROKER:-}" robot_code:="${ROBOT_CODE:-RBT-002}" \
-       simulated_battery_percent:="${SIM_BATTERY_PERCENT:-}"
+  # ros2 launch rejects an empty "name:=" (2026-11-17: the unit restarted 2770 times on simulated_battery_percent:=),
+  # so optional arguments are passed only when set.
+  ARGS=(bundle:="$BUNDLE" motors_enabled:="$MOTORS_ENABLED" robot_code:="${ROBOT_CODE:-RBT-002}")
+  if [ -n "${BROKER:-}" ]; then ARGS+=(mqtt_host:="$BROKER"); fi
+  if [ -n "${SIM_BATTERY_PERCENT:-}" ]; then ARGS+=(simulated_battery_percent:="$SIM_BATTERY_PERCENT"); fi
+  exec ros2 launch warotrans_rbt002_bringup fleet.launch.py "${ARGS[@]}"
 fi
 echo "[rbt2_start] MANUAL mode motors=$MOTORS_ENABLED"
 exec ros2 launch warotrans_rbt002_bringup bringup.launch.py motors_enabled:="$MOTORS_ENABLED"

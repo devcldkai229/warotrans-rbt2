@@ -5,7 +5,7 @@ evidence_agent:
   ros__parameters:
     spool_dir: "~/warotrans_evidence"   # on the SSD (the Pi boots from it)
     quota_gb: 20.0
-    upload_rate_limit_mbps: 2.0
+    upload_rate_limit_mbytes_per_s: 2.0   # 1280x720@15 MJPEG records ~1.2 MB/s
     delete_uploaded: true
     camera_id: "front"
     camera_model: "Raspberry Pi Camera Module 3 Wide"
