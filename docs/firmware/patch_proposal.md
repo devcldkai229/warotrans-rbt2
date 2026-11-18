@@ -11,7 +11,7 @@
 | Kiểm chứng sau nạp | gói encoder 50 Hz ngay từ boot, ultrasonic 10 Hz (44–55 mm), driver nhận profile `patched`, 0 lỗi CRC. Bật pin thì bánh đứng yên |
 
 **v2 (2026-11-15, đã nạp):** thêm mục 9, đèn cảm biến siêu âm đổi màu theo khoảng cách.
-- Ngưỡng: xanh > 50 cm, vàng 20–50 cm, đỏ < 20 cm, trễ 2 cm.
+- Ngưỡng: xanh lá > 50 cm, vàng 20–50 cm, đỏ < 20 cm, trễ 2 cm. Từ v1.1 (2026-11-18): xa là **xanh dương**.
 - Ghi một lần 7 byte vào thanh ghi 2–8 của sonar, chỉ khi đổi vùng màu. Đọc lỗi (0 mm) thì giữ nguyên màu.
 - Đã kiểm logic chuyển vùng bằng gcc host (14 mẫu, 5 lần ghi).
 - `rrc_lite_warotrans.bin` 61 912 byte, SHA256 `3ff5006695c08cba23dcd755f3d7c402bb6e9fcdbd40eb0765f9dfa917c719dc`.
@@ -72,3 +72,18 @@ Driver Pi (`warotrans_rrc_lite`) đã hỗ trợ sẵn các mục 2, 3, 4 và đ
    - Encoder M4 phải đếm.
 4. Chạy E2E thật với `motors_enabled:=true` theo `docs/first_motion_procedure.md`.
 5. **Rollback:** nạp lại file `.bin` đã backup ở bước 1.
+
+## v1.1 (2026-11-18)
+
+- **Item 9:** đèn siêu âm vùng xa đổi từ xanh lá sang **xanh dương**. Vàng 20–50 cm, đỏ < 20 cm giữ nguyên.
+- **Item 10 (mới):** giới hạn PWM motor theo điện áp pin. Mạch cầu H đưa thẳng điện áp pin ra motor, firmware gốc cho PWM tới 100 %. Với pin 3S 12.6 V và motor định mức khoảng 8 V, PID bão hoà (lúc khởi động, kẹt bánh) sẽ đặt 12.6 V lên motor.
+  - Trần PWM = `1000 × 8400 mV / điện áp pin` (12.6 V → 66.7 %, 10 V → 84 %). Khi chưa đo được điện áp pin: 60 %.
+  - `current_pulse` lưu sau khi kẹp nên PID không tích luỹ vượt trần.
+- Version trả về: 1.1, build 20261118.
+
+## v1.2 (2026-11-18, đã nạp)
+
+- **Item 10:** trần điện áp trung bình lên motor hạ từ 8.4 V xuống **8.0 V** (motor định mức 8 V). Pin 12.6 V → PWM tối đa 63.5 %.
+- **Item 9:** ghi lại màu đèn siêu âm mỗi 1 s, kể cả khi vùng không đổi. Cảm biến lấy điện từ pin còn MCU sống nhờ USB, nên khi bật pin đèn bị reset mà firmware 1.1 không ghi lại.
+- **Item 11 (mới):** còi báo pin yếu 10.2 V (3.4 V/cell) thay cho 6.3 V của pin 2S.
+- Version 1.2, build 20261118. sha256 `9562c9eb6450d43182c5b820b767e11d57fb6801250b18f17bdfa183f16ce7b6`.

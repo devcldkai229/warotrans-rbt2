@@ -1,0 +1,18 @@
+# Follow the backend laptop when its address changes (new Wi-Fi, ICS re-lease) or when it appears after a start
+# without one: every 30 s, 3 missed MQTT checks in a row -> resolve again; a different answer restarts the stack.
+# Reads the target the stack was started with from ~waro/.cache/warotrans/broker (written by tools/rbt2_start.sh;
+# absent in manual mode, so the watcher stays idle there).
+[Unit]
+Description=WaroTrans RBT-002 backend address watcher
+After=network-online.target warotrans-rbt002.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/home/waro/.config/warotrans/rbt002.env
+ExecStart=/usr/bin/python3 /home/waro/warotrans_rbt2_ws/tools/broker_discovery.py watch --state /home/waro/.cache/warotrans/broker --on-change "systemctl restart warotrans-rbt002"
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,3 +1,4 @@
+import struct
 import math
 
 import pytest
@@ -145,7 +146,8 @@ def test_motor_type_sent_on_connect_before_any_stop():
     run(link, clock, 0.05)
     assert board.motor_type == p.MotorType.JGB520
     # first recorded MOTOR command must be the type (history logs every motor command in order)
-    assert board.stats.type_commands == 1
+    # sent on connect and again on the board's first frame (2026-11-18: bytes written at open were lost)
+    assert board.stats.type_commands == 2
     assert board.stats.history[0][1] == (0.0, 0.0, 0.0, 0.0)
 
 
@@ -203,4 +205,20 @@ def test_no_motor_packet_at_all_without_motor_type():
     run(link, clock, 1.0)
     link.shutdown()
     assert board.stats.stop_commands == 0 and board.stats.motor_commands == 0 and board.stats.type_commands == 0
-    assert board.stats.version_queries == 1  # SYS packets are fine
+    assert board.stats.version_queries == 2  # SYS packets are fine (connect + first frame)
+
+
+def test_motor_type_resent_after_mcu_restart():
+    """2026-11-18: an MCU reset restores the firmware boot preset (JGB37, 1980 counts) without a USB reconnect."""
+    clock, board, link, _ = make(motor_type=int(p.MotorType.JGB528))
+    run(link, clock, 0.5)
+    before = board.stats.type_commands
+    resends = link.status().init_resends
+    fb = lambda ms: p.build_frame(p.Func.MOTOR, bytes([0x80]) + struct.pack("<I4i4f", ms, 0, 0, 0, 0, 0, 0, 0, 0))  # noqa: E731
+    link._process(fb(100000), clock())
+    link._process(fb(100020), clock())   # normal progress: no resend
+    assert board.stats.type_commands == before
+    link._process(fb(5), clock())        # tick went back: board restarted
+    run(link, clock, 0.05)
+    assert board.stats.type_commands == before + 1
+    assert link.status().init_resends == resends + 1

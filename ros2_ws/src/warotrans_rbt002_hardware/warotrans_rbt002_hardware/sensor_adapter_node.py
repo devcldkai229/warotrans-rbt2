@@ -16,10 +16,10 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import BatteryState, Imu, Range
 from warotrans_msgs.msg import BatteryEstimate
-from warotrans_rbt002_msgs.msg import ImuRaw, UltrasonicRaw
+from warotrans_rbt002_msgs.msg import EncoderFeedback, ImuRaw, UltrasonicRaw
 
 from .battery_soc import MODE_UNAVAILABLE, BatteryConfig, VoltageSocEstimator
-from .imu_convert import ImuConverter, gravity_check
+from .imu_convert import GyroBiasEstimator, ImuConverter, gravity_check
 
 
 class SensorAdapterNode(Node):
@@ -39,6 +39,7 @@ class SensorAdapterNode(Node):
         d("battery_plausible_min_v", 5.0)
         d("battery_plausible_max_v", 30.0)
         d("battery_design_capacity_ah", 0.0)
+        d("gyro_bias_autocal", True)  # learn the gyro bias while the encoders say the wheels are still
         g = lambda n: self.get_parameter(n).value  # noqa: E731
 
         self._imu = ImuConverter(str(g("imu_units")))
@@ -59,6 +60,7 @@ class SensorAdapterNode(Node):
             stale_after_s=3.0, median_window=3, ema_tau_s=3.0)
         self._batt = VoltageSocEstimator(self._bcfg)
         self._gravity_warned = False
+        self._bias = GyroBiasEstimator() if bool(g("gyro_bias_autocal")) else None
 
         self._pub_imu = self.create_publisher(Imu, "/imu/data", 20)
         self._pub_us = self.create_publisher(Range, "/ultrasonic/front", 10)
@@ -67,6 +69,9 @@ class SensorAdapterNode(Node):
         self.create_subscription(ImuRaw, "/rrc_lite/imu_raw", self._on_imu, 20)
         self.create_subscription(UltrasonicRaw, "/rrc_lite/ultrasonic", self._on_us, 10)
         self.create_subscription(BatteryState, "/rrc_lite/battery", self._on_batt, 5)
+        if self._bias is not None:
+            self.create_subscription(EncoderFeedback, "/rrc_lite/encoders",
+                                     lambda m: self._bias.on_wheels(list(m.rps), time.monotonic()), 20)
         self.create_timer(1.0, self._publish_battery)
         self.create_timer(10.0, self._log_imu_stats)
 
@@ -83,7 +88,8 @@ class SensorAdapterNode(Node):
         out.header.frame_id = self._imu_frame
         out.orientation_covariance[0] = -1.0  # no orientation estimate
         out.linear_acceleration.x, out.linear_acceleration.y, out.linear_acceleration.z = s.accel
-        out.angular_velocity.x, out.angular_velocity.y, out.angular_velocity.z = s.gyro
+        gyro = self._bias.apply(s.gyro, time.monotonic()) if self._bias is not None else s.gyro
+        out.angular_velocity.x, out.angular_velocity.y, out.angular_velocity.z = gyro
         for i in (0, 4, 8):
             out.linear_acceleration_covariance[i] = self._acc_var
             out.angular_velocity_covariance[i] = self._gyr_var
@@ -135,6 +141,9 @@ class SensorAdapterNode(Node):
 
     def _log_imu_stats(self) -> None:
         st = self._imu.stats
+        if self._bias is not None:
+            self.get_logger().info(f"gyro bias {[round(b, 5) for b in self._bias.bias]} rad/s "
+                                   f"({self._bias.samples} still samples)", throttle_duration_sec=60.0)
         if st.zero_frames or st.non_finite or st.implausible:
             self.get_logger().info(f"IMU dropped: zero={st.zero_frames} non_finite={st.non_finite} "
                                    f"implausible={st.implausible} accepted={st.accepted}")

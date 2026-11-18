@@ -14,7 +14,7 @@ def load(name):
 def test_real_config_has_no_unmeasured_guesses():
     shared = load("rbt002.yaml")["/**"]["ros__parameters"]
     # measured 2026-11-15 (docs/calibration.md §1); a change here must come with a new calibration entry
-    assert (shared["wheel_radius_m"], shared["half_wheelbase_m"], shared["half_track_m"]) == (0.0485, 0.0975, 0.1075)
+    assert (shared["wheel_radius_m"], shared["half_wheelbase_m"], shared["half_track_m"]) == (0.0476, 0.0975, 0.1039)  # effective, LiDAR self-calibration 2026-11-18
     # the motor map lives in ~/.config/warotrans/rbt002_calibration.yaml on the robot, not in the repo
     for k in ("port_fl", "port_fr", "port_rl", "port_rr"):
         assert shared[k] == 0

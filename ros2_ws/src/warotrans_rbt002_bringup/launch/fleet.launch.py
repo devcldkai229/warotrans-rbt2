@@ -25,6 +25,23 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def gateway_params_with_simulated_battery(params_file: str, percent: float, out_dir: str | None = None) -> str:
+    """A copy of the gateway YAML with simulated_battery_percent set (0..100). Returns the copy's path."""
+    import tempfile
+
+    import yaml
+
+    if not 0.0 <= percent <= 100.0:
+        raise RuntimeError(f"simulated_battery_percent must be 0..100, got {percent}")
+    with open(params_file, encoding="utf-8") as f:
+        doc = yaml.safe_load(f)
+    doc["robot_gateway"]["ros__parameters"]["simulated_battery_percent"] = float(percent)
+    fd, path = tempfile.mkstemp(prefix="robot_gateway_rbt002_sim_battery_", suffix=".yaml", dir=out_dir)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        yaml.safe_dump(doc, f, sort_keys=False)
+    return path
+
+
 def _setup(context):
     lc = lambda n: LaunchConfiguration(n).perform(context)  # noqa: E731
     bundle = os.path.expanduser(lc("bundle"))
@@ -71,7 +88,7 @@ def _setup(context):
                               "amcl_params_file": cfg("amcl_rbt002.yaml")}.items()),
     ]
     if lc("camera").lower() == "true":
-        actions.append(Node(package="warotrans_rbt002_camera", executable="camera_stream", name="camera_stream",
+        actions.append(Node(package="warotrans_camera", executable="camera_stream", name="camera_stream",
                             output="screen", parameters=params))
     if ekf:
         actions.append(IncludeLaunchDescription(
@@ -92,18 +109,32 @@ def _setup(context):
             "enable_cmd_vel_pipeline": "true",
             "enable_authority_gate": "true",
             "gate_output_topic": "cmd_vel_motor",
-            "required_authority_publisher": "robot_gateway",
+            "required_authority_publisher": lc("authority_publisher"),
         }.items())
     actions.append(TimerAction(period=float(lc("nav_start_delay_sec")), actions=[nav_include]))
 
     mqtt_host = lc("mqtt_host").strip()
     if mqtt_host:
         fleet = get_package_share_directory("warotrans_fleet")
+        gateway_params = cfg("robot_gateway_rbt002.yaml")
+        simulated = lc("simulated_battery_percent").strip()
+        if simulated:
+            # Dry runs without the motor battery only: telemetry then says batteryEstimationMode=SIMULATED.
+            gateway_params = gateway_params_with_simulated_battery(gateway_params, float(simulated))
+            actions.append(LogInfo(msg=f"[rbt002 fleet] WARNING battery is SIMULATED at {float(simulated):.0f} % "
+                                       "(dry run only; unset SIM_BATTERY_PERCENT before real work)"))
         actions.append(IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(fleet, "launch", "fleet.launch.py")),
-            launch_arguments={"params_file": cfg("robot_gateway_rbt002.yaml"),
+            launch_arguments={"params_file": gateway_params,
                               "robot_code": lc("robot_code"), "mqtt_host": mqtt_host,
                               "semantic_manifest": os.path.join(bundle, "semantic_manifest.json")}.items()))
+        if lc("camera").lower() == "true" and lc("evidence").lower() == "true":
+            # Evidence: records the camera during trips and uploads to the Recorder on the backend laptop. The robot's
+            # credential is WARO_EVIDENCE_TOKEN in ~/.config/warotrans/rbt002.env (never in this repository).
+            actions.append(Node(package="warotrans_evidence_agent", executable="evidence_agent", name="evidence_agent",
+                                output="screen",
+                                parameters=[cfg("evidence_agent_rbt002.yaml"),
+                                            {"recorder_url": f"http://{mqtt_host}:5095", "robot_code": lc("robot_code")}]))
     else:
         actions.append(LogInfo(msg="[rbt002 fleet] mqtt_host empty: robot_gateway NOT started (no backend link)"))
     return actions
@@ -115,9 +146,14 @@ def generate_launch_description():
         DeclareLaunchArgument("motors_enabled", default_value="false"),
         DeclareLaunchArgument("enable_ekf", default_value="true"),
         DeclareLaunchArgument("camera", default_value="true"),
+        DeclareLaunchArgument("evidence", default_value="true"),
         DeclareLaunchArgument("nav_start_delay_sec", default_value="12.0"),
         DeclareLaunchArgument("calibration_file", default_value="~/.config/warotrans/rbt002_calibration.yaml"),
         DeclareLaunchArgument("mqtt_host", default_value="", description="MQTT broker (backend laptop)"),
         DeclareLaunchArgument("robot_code", default_value="RBT-002"),
+        DeclareLaunchArgument("authority_publisher", default_value="robot_gateway",
+                              description="only node allowed to open the cmd_vel gate (nav tests: the test runner)"),
+        DeclareLaunchArgument("simulated_battery_percent", default_value="",
+                              description="dry run without the motor battery: report this battery % (SIMULATED)"),
         OpaqueFunction(function=_setup),
     ])

@@ -26,7 +26,9 @@ laser:              # RPLIDAR C1 optical centre, relative to base_link. Operator
   x: -0.018         # 1.8 cm BEHIND the chassis centre
   y: 0.0            # no left/right offset
   z: 0.1315         # scan plane 18.0 cm above ground - 4.85 cm axle height
-  yaw: 0.0          # operator: C1 zero direction already faces forward (no 90 deg rotation, unlike RBT-001)
+  yaw: 3.14159265   # 2026-11-18: C1 zero direction faces the REAR. Operator saw the robot drive tail-first with yaw 0;
+                    # the self-calibration showed +vx moving toward the scan's +x, so with the corrected wheel signs
+                    # (+vx = physical forward) the scan's +x is the robot's rear.
 
 imu:                # QMI8658 on the RRC Lite board, relative to base_link
   x: 0.041          # operator 2026-11-15: board centre 4.1 cm ahead of the chassis centre
@@ -34,9 +36,9 @@ imu:                # QMI8658 on the RRC Lite board, relative to base_link
   z: 0.0515         # operator 2026-11-15: board 10.0 cm above ground - 4.85 cm axle height
   roll: 0.0         # board flat: probe 2026-11-15 shows gravity on +z only (|a| 0.946 g, ax ~0, ay 0.05 g)
   pitch: 0.0
-  yaw: 0.0          # PROVISIONAL: board x-axis direction not yet checked. Harmless for now: the EKF fuses only
-                    # gyro z (board flat, +z up), which does not depend on the board's yaw. Verify before
-                    # fusing accelerations or using imu_link x/y.
+  yaw: 0.0          # 2026-11-18: board x-axis = physical forward (accel +x when speeding up forward once the wheel
+                    # signs were corrected; a first reading of "yaw 180" came from the reversed signs). Gyro z (+z up)
+                    # matches the LiDAR within 0.05 % over 2 x 360 deg and does not depend on this yaw.
 
 ultrasonic_front:   # Hiwonder I2C sonar on the RRC Lite expansion port (data needs patched firmware)
   x: 0.125          # operator 2026-11-15: 2.5 cm back from the chassis front edge; front edge = 0.30 m / 2 (Hiwonder wiki)

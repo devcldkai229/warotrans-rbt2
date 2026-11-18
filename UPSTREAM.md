@@ -6,7 +6,7 @@ Nguồn: repo `warotrans` (RBT-001) @ `d44bd23e18abb43b7148ef8fa33f845afc638c22`
 
 | RBT-002 | RBT-001 | Thay đổi |
 |---|---|---|
-| `ros2_ws/src/warotrans_msgs/` | `ros2_ws/src/warotrans_msgs/` | bỏ thư mục `action/`, `srv/` vì cả hai đều trống. Wire-compatible với backend / fleet |
+| `ros2_ws/src/warotrans_msgs/` | `ros2_ws/src/warotrans_msgs/` | từ 2026-11-17 đồng bộ bằng `tools/sync_from_rbt1.py` như các core package |
 | `warotrans_rbt002_hardware/battery_soc.py` | `warotrans_hardware/warotrans_hardware/battery_soc.py` | không đổi. Cấu hình `divider_gain=1` vì RRC Lite báo thẳng mV của pack |
 | `warotrans_rbt002_hardware/test/test_battery_soc.py` | `warotrans_hardware/test/test_battery_soc.py` | chỉ đổi đường import |
 
@@ -21,12 +21,11 @@ Nguồn: repo `warotrans` (RBT-001) @ `d44bd23e18abb43b7148ef8fa33f845afc638c22`
 | `docs/*` | quy tắc "CHƯA XÁC NHẬN", thứ tự nguồn sự thật, TF contract |
 
 ## Chưa dùng
-- `warotrans_fleet` (MQTT gateway): cần `/odom` và Nav2, sẽ dùng khi có firmware patch
 - `warotrans_teleop`: thay bằng gateway mới (WebSocket, lease, calibration)
 
 ## Core package dùng chung (copy nguyên trạng, đồng bộ bằng `tools/sync_from_rbt1.py`)
 
-`warotrans_navigation` (chỉ mang bundle bản đồ đang vận hành), `warotrans_localization`, `warotrans_slam`, `warotrans_lane_planner`, `warotrans_fleet`.
+`warotrans_navigation` (chỉ mang bundle bản đồ đang vận hành), `warotrans_localization`, `warotrans_slam`, `warotrans_lane_planner`, `warotrans_fleet`, `warotrans_msgs`. `tools/set_initial_pose.py` copy từ `warotrans/tools`.
 
 Quy tắc:
 - **Không sửa các package này ở đây.**
@@ -37,3 +36,9 @@ Quy tắc:
 |---|---|---|---|---|
 | 2026-11-15 | core sync | `fix/final-rbt1-precise-arrival@d44bd23` + working tree chưa commit (bản precise-arrival đang chạy trên RBT-001) | +156 ~0 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet; maps map_one_v013 |
 | 2026-11-15 | core sync | `fix/final-rbt1-precise-arrival@d44bd23` + working tree chưa commit | +0 ~1 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet; maps map_one_v013 |
+| 2026-11-17 | core sync | `feature/rbt2-params@6579cf3` + working tree chưa commit | +2 ~2 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet, warotrans_msgs; maps map_one_v013 |
+| 2026-11-17 | core sync | `feature/rbt2-params@0fa5f7c` + working tree chưa commit | +13 ~7 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet, warotrans_msgs; maps map_one_v014 |
+| 2026-11-17 | core sync | `feature/evidence-edge@af194ef` + working tree chưa commit | +25 ~2 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet, warotrans_msgs, warotrans_camera, warotrans_evidence_agent; maps map_one_v014 |
+| 2026-11-17 | core sync | `feature/evidence-edge@acadfac` + working tree chưa commit | +0 ~3 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet, warotrans_msgs, warotrans_camera, warotrans_evidence_agent; maps map_one_v014 |
+| 2026-11-17 | core sync | `feature/evidence-edge@acadfac` + working tree chưa commit | +0 ~4 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet, warotrans_msgs, warotrans_camera, warotrans_evidence_agent; maps map_one_v014 |
+| 2026-11-17 | core sync | `feature/robot-network@205e248` | +0 ~3 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet, warotrans_msgs, warotrans_camera, warotrans_evidence_agent; maps map_one_v014 |

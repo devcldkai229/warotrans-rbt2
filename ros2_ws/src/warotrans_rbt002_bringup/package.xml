@@ -12,7 +12,8 @@
   <exec_depend>warotrans_rbt002_hardware</exec_depend>
   <exec_depend>warotrans_rbt002_description</exec_depend>
   <exec_depend>warotrans_rbt002_control_gateway</exec_depend>
-  <exec_depend>warotrans_rbt002_camera</exec_depend>
+  <exec_depend>warotrans_camera</exec_depend>
+  <exec_depend>warotrans_evidence_agent</exec_depend>
   <!-- fleet mode: core copied from RBT-001 (docs/adr/0002) -->
   <exec_depend>warotrans_localization</exec_depend>
   <exec_depend>warotrans_navigation</exec_depend>

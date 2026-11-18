@@ -48,7 +48,7 @@ Xem docstring trong `warotrans_rbt002_control_gateway/app.py`. Token qua `?token
 
 Xem `docs/audit/rrc_lite_protocol.md`.
 
-## Camera (warotrans_rbt002_camera)
+## Camera (warotrans_camera)
 
 - `http://<robot>:8081/stream`: MJPEG `multipart/x-mixed-replace; boundary=frame`, 1280×720 @ 15 fps. Cùng hợp đồng với `StreamRobotCamera` của warotrans-system (`RobotCamera:Robots:RBT-002`).
 - `http://<robot>:8081/snapshot.jpg`, `/health`, `/` (trang xem nhanh).

@@ -14,6 +14,7 @@ Quy tắc: chỉ ghi số **đã đo**, kèm ngày, phương pháp và người 
 | 2026-11-15 | IMU có frame toàn 0 | có (az min = 0.0000) | probe |
 | 2026-11-15 | Motor preset gửi khi kết nối | `motor_type 1` (JGB37). Một gói này làm 2 bánh sau đang tự quay dừng lại (anh xác nhận) | `pi_init_motors.py` |
 | 2026-11-15 | Pin | 2S2P Li-ion, tối đa 8.4 V (anh cung cấp) → ngưỡng 6.6–8.6 V | — |
+| 2026-11-18 | Pin | Đổi sang 3S Li-ion 12.6 V (anh cung cấp) → ngưỡng 9.9–12.9 V, 3 cell; firmware 1.1 giới hạn PWM motor ≤ 8.4 V trung bình | — |
 | 2026-11-15 | Board đọc pin | 3.94 V kể cả khi bật công tắc. Motor chỉ kêu ở 0.1 rps, áp sụt 3936 xuống 3893 mV | `pi_spin_test.py` (kê bánh, có đồng ý) |
 | 2026-11-15 | LiDAR C1 | `sllidar_ros2` @3430009, 460800 baud, `scan_mode Standard`, `frame_id laser` | `~/ros2_ws/src/sllidar_ros2/launch/sllidar_c1_launch.py` trên Pi |
 
@@ -55,7 +56,8 @@ Lịch sử:
 
 ## 4. Pin: CHƯA XÁC NHẬN
 
-- 2S2P Li-ion, tối đa 8.4 V (anh cung cấp). Ngưỡng cho phép chạy: 6.6–8.6 V.
+- Từ 2026-11-18: 3S Li-ion, tối đa 12.6 V (anh cung cấp). Ngưỡng cho phép chạy: 9.9–12.9 V. Motor định mức khoảng 8 V nên firmware 1.1 giới hạn PWM để điện áp trung bình lên motor ≤ 8.4 V (= pin 2S cũ lúc đầy).
+- Trước đó: 2S2P Li-ion, tối đa 8.4 V, ngưỡng 6.6–8.6 V.
 - 2026-11-15: board luôn đọc **3.94 V**, kể cả khi bật công tắc. Pin không vào được board, motor ăn nguồn USB dội ngược (`docs/safety.md`).
 - **Cần đo bằng đồng hồ:** điện áp pin, và điện áp tại cổng nguồn RRC Lite khi bật công tắc.
 
@@ -66,3 +68,36 @@ Lịch sử:
 ## 6. IMU noise: CHƯA XÁC NHẬN
 
 Đo variance khi robot đứng yên 60 s (`ros2 bag record /imu/data`), rồi điền `imu_accel_variance` và `imu_gyro_variance`. Bias tĩnh của gyro trong probe là khoảng +0.25 / −0.52 / +0.22 deg/s; chỉ là một lần đo, chưa phải số hiệu chuẩn.
+
+## 2026-11-18: tự hiệu chuẩn trên sàn (Claude tự chạy robot, anh cho phép; robot ở INBOUND)
+
+Chuẩn thật là LiDAR: so khớp ICP giữa scan trung vị lúc đứng yên trước và sau mỗi lần chạy. Có chặn an toàn: hành lang ±0.20 m phía trước và sau, 0.24 m xung quanh khi xoay; lệnh hết hạn sau 0.5 s; watchdog firmware. Script: `calib_runner.py` (scratchpad của phiên).
+
+**Hai lỗi tìm thấy và đã sửa:**
+- **Firmware chạy preset JGB37 (1980 xung/vòng) thay cho JGB528 (5764).** Lệnh chọn loại motor gửi ngay lúc mở cổng serial bị mất, nên version firmware cũng không bao giờ trả về. Hậu quả: mọi bánh quay khoảng 1/2.9 tốc độ lệnh. Sửa trong `warotrans_rrc_lite/link.py`: gửi lại loại motor, STOP và lệnh hỏi version khi nhận khung đầu tiên và mỗi khi MCU khởi động lại. Sau khi sửa: 5726–5783 xung/vòng trên cả 4 cổng.
+- **Trái/phải bị đảo.** Lệnh +wz làm xe xoay thuận chiều kim đồng hồ (LiDAR −0.22 rad, gyro −0.22 rad), trong khi odom báo +0.23. Map mới: `port_fl 3, port_rl 4, port_fr 1, port_rr 2`, dấu giữ nguyên `[+1, +1, −1, −1]`. Nằm trong `~/.config/warotrans/rbt002_calibration.yaml` trên Pi; bản cũ sao lưu ở `~/warotrans_rbt2_backups/rbt002_calibration_20261118_before_lr_swap.yaml`.
+
+| Phép đo | LiDAR | Gyro | Odom (r 0.0485, k 0.205) |
+|---|---|---|---|
+| Xoay +46° | 0.806 rad | 0.796 | 0.806 |
+| 360° CCW ở 0.6 rad/s | 6.326 | 6.326 | 6.316 |
+| 360° CW ở 0.6 rad/s | −6.327 | −6.330 | −6.329 |
+| Tiến 1 m ở 0.30 m/s | 0.989 m | — | 1.009 m |
+| Lùi 1 m ở 0.18 m/s | 0.983 m | — | 0.999 m |
+
+**Kết luận đã ghi vào cấu hình:**
+- `wheel_radius_m` **0.0476** (hiệu dụng; trên bản vẽ là 0.0485).
+- `half_track_m` **0.1039** (hiệu dụng khi xoay; đo thước 0.1075). k giảm cùng tỉ lệ với r để xoay vẫn khớp.
+- **IMU:** z hướng lên, gyro đúng dấu, sai số tỉ lệ < 0.05 %, bias 0.0034 rad/s, nhiễu σ 0.0016 rad/s. **Yaw lắp = 180°** (trục x chỉ ra sau), xác định từ gia tốc khi tăng tốc và phanh, ±6°. Đã ghi `geometry.yaml` imu yaw π.
+- **Tốc độ:** ở 0.30 m/s bánh giữ 0.983 vòng/s (lệnh 0.984) với PWM bị giới hạn 8 V, nên đủ cho transport request. Giới hạn firmware 1.1 vòng/s ≈ 0.33 m/s. Nav2 giữ 0.30 tiến, 0.18 lùi, 0.6 rad/s xoay.
+- Xe lệch nhẹ sang phải khi đi thẳng: −0.75° và 2.6 cm sau 1 m. EKF (gyro) và AMCL xử lý.
+- Chưa đo: tốc độ tối đa thật trên 0.30 m/s; watchdog khi rút USB lúc đang chạy.
+
+### Sửa lại 2026-11-18 (anh phát hiện xe chạy đuôi lên trước)
+
+Kết luận "trái/phải bị đảo" và "IMU lắp xoay 180°" ở trên là **sai**. Lệnh +vx thực ra làm xe chạy **lùi**: tất cả dấu motor đều bị đảo. Đảo hết dấu thì chiều xoay cũng đảo, nên phép thử xoay và phép thử đi thẳng đều khớp với cả hai cách giải thích. Chỉ người nhìn trực tiếp robot mới phân biệt được. Cấu hình đúng:
+- Map motor ban đầu của anh: M1 trước-trái, M2 sau-trái, M3 trước-phải, M4 sau-phải. Dấu **[−1, −1, +1, +1]**. Bản sai đã sao lưu ở `~/warotrans_rbt2_backups/rbt002_calibration_20261118_lr_swap_wrong.yaml`.
+- IMU yaw **0**, tức trục x của board hướng về đầu xe.
+- LiDAR yaw **π**: hướng 0° của C1 chỉ về đuôi xe.
+- Bán kính bánh 0.0476, `half_track` 0.1039 và các hệ số gyro vẫn đúng, vì chúng không phụ thuộc chiều.
+- Bài học: chỉ dùng LiDAR thì không phân biệt được đầu và đuôi xe. Cần một tham chiếu vật lý: người nhìn, hoặc cảm biến siêu âm gắn ở đầu xe.

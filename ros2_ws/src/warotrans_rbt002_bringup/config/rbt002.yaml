@@ -13,13 +13,17 @@
     motors_enabled: false
     # Host-side wheel speed clamp, rev/s of the motor output shaft (firmware does NOT clamp the serial path).
     # Must stay <= the firmware preset rps_limit of the configured motor_type.
-    # 2026-11-15 test: open to JGB37 preset rps_limit (3.0) for full-speed trial — NOT a measured JGB36-520 limit.
-    max_wheel_rps: 3.0
+    # motor_type 3 (JGB528 131:1 90 rpm): firmware preset rps_limit 1.1, more only saturates its PID (3.0 was the JGB37 preset of a 2026-11-15 manual trial). Fleet: 1.0 (fleet_base.yaml).
+    max_wheel_rps: 1.1
 
     # --- wheel geometry (metres) — 2026-11-15, docs/calibration.md §1 ---
-    wheel_radius_m: 0.0485     # Hiwonder drawing: mecanum wheel diameter 97 mm (not yet checked by roll-out)
+    # VERIFIED 2026-11-18 self-calibration on the floor (LiDAR ICP ground truth, docs/calibration.md §2026-11-18):
+    #   1 m forward at 0.30 m/s: odom +2.0 %, 1 m back at 0.18 m/s: odom +1.6 % -> effective radius 0.0485 x 0.982.
+    #   With the nominal r/k, 2 x 360 deg matched the LiDAR within 0.15 %; k = half_wheelbase + half_track is scaled
+    #   by the same 0.982 so the turn stays exact: effective half_track 0.1039 (tape 0.1075).
+    wheel_radius_m: 0.0476     # effective (drawing 0.0485, 97 mm wheel)
     half_wheelbase_m: 0.0975   # operator tape: front-rear axle centres 195 mm (both sides)
-    half_track_m: 0.1075       # operator tape: left-right wheel centres 215 mm
+    half_track_m: 0.1039       # effective for turning (tape 0.1075 = 215 mm wheel centres)
 
     # --- motor port map — CHƯA XÁC NHẬN, fill from Calibration mode (docs/first_motion_procedure.md) ---
     port_fl: 0                 # RRC Lite motor port (1..4) driving the front-left wheel
@@ -56,9 +60,10 @@ base_controller:
     cmd_timeout_s: 0.3
     # Battery window that allows motion. 2026-11-15: board reads 3.95 V even with the switch on (pack not
     # reaching the board; motors only buzz on USB back-feed) -> ENABLED/CALIBRATION blocked until fixed.
-    # 2S2P Li-ion, max 8.4 V (operator 2026-11-15). 6.6 V = 3.3 V/cell floor, 8.6 V = charger tolerance.
-    battery_min_v: 6.6
-    battery_max_v: 8.6
+    # 2026-11-18: 3S Li-ion pack, 12.6 V full (operator; was 2S2P 8.4 V). 9.9 V = 3.3 V/cell floor,
+    # 12.9 V = charger tolerance. Motors are rated ~8 V: firmware >= 1.1 caps the PWM to 8.4 V average (item 10).
+    battery_min_v: 9.9
+    battery_max_v: 12.9
     battery_stale_s: 3.0
     calibration_max_rps: 0.3
     calibration_max_duration_ms: 3000
@@ -77,14 +82,14 @@ sensor_adapter:
     ultrasonic_min_range_m: 0.0
     ultrasonic_max_range_m: 0.0
     ultrasonic_fov_rad: 0.0
-    battery_soc_enabled: true    # 2S2P Li-ion (operator); backend refuses dispatch with UNKNOWN battery
-    battery_cells_in_series: 2 # 2S2P, 8.4 V full (operator 2026-11-15); generic Li-ion OCV table -> LOW confidence
-    battery_plausible_min_v: 5.0
-    battery_plausible_max_v: 9.0
+    battery_soc_enabled: true    # Li-ion (operator); backend refuses dispatch with UNKNOWN battery
+    battery_cells_in_series: 3 # 3S, 12.6 V full (operator 2026-11-18); generic Li-ion OCV table -> LOW confidence
+    battery_plausible_min_v: 7.5
+    battery_plausible_max_v: 13.5
 
 wheel_odom:
   ros__parameters:
-    counts_per_rev: 5764.0     # JGB37-528R131 datasheet: 11 x 4 x 131. Verify: 10 hand turns of a wheel ~ 57640 counts
+    counts_per_rev: 5764.0     # JGB37-528R131 datasheet: 11 x 4 x 131. VERIFIED 2026-11-18: firmware tps/rps = 5726..5783 on all ports and odom matches the LiDAR
     publish_tf: false
 
 sllidar_node:
@@ -106,6 +111,8 @@ camera_stream:
     framerate: 15
     quality: 80
     rotation: 0                # 180 if the camera image is upside down
+    camera_model: "Raspberry Pi Camera Module 3 Wide"   # imx708_wide, nominal 120 deg (operator)
+    segment_seconds: 30.0      # evidence: one AVI per 30 s on the SSD
 
 control_gateway:
   ros__parameters:
