@@ -29,11 +29,13 @@ ekf_filter_node:
     # to IMU yaw would give two conflicting headings. vyaw variance in /odom is
     # large (hardware.yaml) so the IMU gyro dominates heading.
     odom0: /odom
+    # 2026-11-18 RBT-002: + wheel yaw RATE. The 4-wheel odometry matched the LiDAR within 0.15 % over 2 x 360 deg
+    # (docs/calibration.md); the gyro alone drifted the heading (raw bias 0.2 deg/s) until sensor_adapter learned it.
     odom0_config: [
       false, false, false,
       false, false, false,
       true,  true,  false,
-      false, false, false,
+      false, false, true,
       false, false, false
     ]
     odom0_differential: false

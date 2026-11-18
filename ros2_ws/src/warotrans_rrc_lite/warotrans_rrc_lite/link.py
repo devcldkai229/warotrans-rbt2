@@ -78,6 +78,7 @@ class LinkStatus:
     watchdog_trips: int = 0
     rejected_setpoints: int = 0
     reconnects: int = 0
+    init_resends: int = 0  # motor type re-sent (first frame / MCU restart)
     motors_allowed: bool = False
     last_sent_rps: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     last_error: str = ""
@@ -98,6 +99,8 @@ class RrcLiteLink:
         self._parser = p.FrameParser()
         self._connected = False
         self._connected_at = 0.0
+        self._init_confirmed = False   # motor type re-sent after the board's first valid frame
+        self._last_fb_ms: Optional[int] = None
         self._next_connect = 0.0
         self._backoff = config.reconnect_min_s
         self._last_rx: Optional[float] = None
@@ -221,21 +224,32 @@ class RrcLiteLink:
             self._status.port = self._t.description
             self._parser.reset()
             self._last_rx = None
+            self._init_confirmed = False
+            self._last_fb_ms = None
             self._profile = PROFILE_UNKNOWN
             self._status.firmware_version = ""
             self._last_setpoint_t = None
             self._stale_handled = True
             log.info("connected to %s", self._t.description)
-            # Motor type FIRST: the first MOTOR packet starts the firmware motor PID; sending the type in that
-            # packet means it never runs with the JGA27 defaults (negative gains), then STOP clears setpoints.
-            if self.cfg.motor_type is not None:
-                if self._write(p.encode_set_motor_type(int(self.cfg.motor_type))):
-                    log.info("motor type %s sent (initialises the firmware motor outputs at 0)",
-                             p.MotorType(int(self.cfg.motor_type)).name)
-            if self.cfg.stop_on_connect:
-                self._send_stop("connect")
-            if self.cfg.query_version:
-                self._write(p.encode_version_query())
+            self._send_init("connect")
+
+    def _send_init(self, reason: str) -> None:
+        """Motor type, STOP, version query.
+
+        Motor type FIRST: the first MOTOR packet starts the firmware motor PID; sending the type in that
+        packet means it never runs with the JGA27 defaults (negative gains), then STOP clears setpoints.
+        Sent again on the board's first valid frame and after every MCU restart: 2026-11-18 on RBT-002 the
+        packets written right after opening the port were lost (no version reply ever, firmware kept its
+        boot preset JGB37 = 1980 counts/rev, so every wheel turned at ~1/2.9 of the commanded speed), and
+        an MCU reset (brown-out when the pack is switched) restores the boot preset without a reconnect.
+        """
+        if self.cfg.motor_type is not None:
+            if self._write(p.encode_set_motor_type(int(self.cfg.motor_type))):
+                log.info("motor type %s sent (%s)", p.MotorType(int(self.cfg.motor_type)).name, reason)
+        if self.cfg.stop_on_connect:
+            self._send_stop(reason)
+        if self.cfg.query_version:
+            self._write(p.encode_version_query())
 
     def _disconnect(self, reason: str, count: bool = True) -> None:
         if self._connected:
@@ -265,6 +279,18 @@ class RrcLiteLink:
             with self._lock:
                 self._last_rx = now
                 self._backoff = self.cfg.reconnect_min_s
+                resend = None
+                if not self._init_confirmed:
+                    self._init_confirmed = True
+                    resend = "first frame"
+                if isinstance(report, p.MotorFeedback):
+                    if self._last_fb_ms is not None and (self._last_fb_ms - report.mcu_ms) % (1 << 32) < (1 << 31)                             and self._last_fb_ms != report.mcu_ms:
+                        resend = "MCU restarted"
+                        log.warning("MCU tick went back %d -> %d ms: board restarted", self._last_fb_ms, report.mcu_ms)
+                    self._last_fb_ms = report.mcu_ms
+                if resend is not None:
+                    self._status.init_resends += 1
+                    self._send_init(resend)
                 if isinstance(report, p.FirmwareVersion):
                     self._profile = PROFILE_PATCHED
                     self._status.firmware_version = f"{report.major}.{report.minor} build {report.build}"

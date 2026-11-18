@@ -109,7 +109,7 @@ def _setup(context):
             "enable_cmd_vel_pipeline": "true",
             "enable_authority_gate": "true",
             "gate_output_topic": "cmd_vel_motor",
-            "required_authority_publisher": "robot_gateway",
+            "required_authority_publisher": lc("authority_publisher"),
         }.items())
     actions.append(TimerAction(period=float(lc("nav_start_delay_sec")), actions=[nav_include]))
 
@@ -151,6 +151,8 @@ def generate_launch_description():
         DeclareLaunchArgument("calibration_file", default_value="~/.config/warotrans/rbt002_calibration.yaml"),
         DeclareLaunchArgument("mqtt_host", default_value="", description="MQTT broker (backend laptop)"),
         DeclareLaunchArgument("robot_code", default_value="RBT-002"),
+        DeclareLaunchArgument("authority_publisher", default_value="robot_gateway",
+                              description="only node allowed to open the cmd_vel gate (nav tests: the test runner)"),
         DeclareLaunchArgument("simulated_battery_percent", default_value="",
                               description="dry run without the motor battery: report this battery % (SIMULATED)"),
         OpaqueFunction(function=_setup),

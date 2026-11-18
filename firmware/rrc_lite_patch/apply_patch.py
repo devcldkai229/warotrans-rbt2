@@ -174,8 +174,8 @@ static void motor_set_checked(uint8_t id, float rps)
             change_battery_limit(cmd->limit);
         }break;
         case 0x10: { /* WAROTRANS PATCH: version query */
-            PacketReportVersionTypeDef v = { .sub_cmd = 0x10, .major = 1, .minor = 0,
-                                             .flags = 0x0007, .build = 20261115 };
+            PacketReportVersionTypeDef v = { .sub_cmd = 0x10, .major = 1, .minor = 2,
+                                             .flags = 0x0007, .build = 20261118 };
             packet_transmit(&packet_controller, PACKET_FUNC_SYS, &v, sizeof(v));
         }break;"""),
 ])
@@ -219,7 +219,7 @@ static void wt_motor_feedback(uint32_t now)
 }
 
 /* WAROTRANS PATCH item 9: sonar LEDs show the distance zone (operator 2026-11-15):
- * green > 500 mm, yellow 200..500 mm, red < 200 mm, 20 mm hysteresis. Hiwonder glowing sonar registers
+ * blue > 500 mm, yellow 200..500 mm, red < 200 mm, 20 mm hysteresis (blue far: operator 2026-11-18). Hiwonder glowing sonar registers
  * (TurboPi Sonar.py): 2 = RGB mode (0 = fixed colour), 3..5 = LED0 RGB, 6..8 = LED1 RGB. Written only when
  * the zone changes, in one 7-byte burst starting at register 2. */
 #define WT_LED_FAR_MM   500u
@@ -227,7 +227,7 @@ static void wt_motor_feedback(uint32_t now)
 #define WT_LED_HYST_MM  20u
 static void wt_sonar_leds(uint16_t mm)
 {
-    static int8_t zone = -1;              /* -1 = never written, 0 green, 1 yellow, 2 red */
+    static int8_t zone = -1;              /* -1 = never written, 0 blue, 1 yellow, 2 red */
     int8_t z = zone;
     if(z < 0) {
         z = mm > WT_LED_FAR_MM ? 0 : (mm >= WT_LED_NEAR_MM ? 1 : 2);
@@ -239,11 +239,17 @@ static void wt_sonar_leds(uint16_t mm)
     } else {
         if(mm > WT_LED_NEAR_MM + WT_LED_HYST_MM) z = (mm > WT_LED_FAR_MM + WT_LED_HYST_MM) ? 0 : 1;
     }
-    if(z == zone) return;
-    static const uint8_t rgb[3][3] = {{0, 255, 0}, {255, 160, 0}, {255, 0, 0}};
+    /* v1.2: rewrite every 1 s even without a zone change. The sonar is powered by the pack, the MCU also by USB:
+     * switching the pack on resets the sonar LEDs while the MCU still remembers the zone, so a change-only write
+     * never repaints them (seen 2026-11-18: no blue after power-up). */
+    static uint32_t last_write = 0;
+    uint32_t now = osKernelGetTickCount();
+    if(z == zone && now - last_write < 1000u) return;
+    static const uint8_t rgb[3][3] = {{0, 0, 255}, {255, 160, 0}, {255, 0, 0}};
     uint8_t buf[7] = {0, rgb[z][0], rgb[z][1], rgb[z][2], rgb[z][0], rgb[z][1], rgb[z][2]};
     if(HAL_I2C_Mem_Write(&hi2c1, WT_SONAR_ADDR << 1, 0x02, I2C_MEMADD_SIZE_8BIT, buf, sizeof(buf), 3) == HAL_OK) {
         zone = z;                         /* retry next cycle if the write failed */
+        last_write = now;
     }
 }
 
@@ -288,4 +294,26 @@ edit("Hiwonder/System/app.c", [(
 edit("Hiwonder/Portings/motor_porting.c", [(
     "    __HAL_TIM_ENABLE(&htim3);\n    HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL);",
     "    __HAL_TIM_ENABLE(&htim3);\n    HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);  /* WAROTRANS PATCH: was htim4 (M3's timer) */")])
+# 10. encoder_motor.c: cap the motor PWM so the AVERAGE motor voltage stays <= WT_MOTOR_VMAX_MV whatever the pack
+#     (operator 2026-11-18: 3S 12.6 V pack, motors rated 8 V). The H-bridge passes the pack voltage straight through,
+#     so the stock +-1000 clamp lets a saturated PID (start-up, stall, blocked wheel) put 12.6 V on the motor.
+#     Cap = 1000 * VMAX / battery_volt (battery_volt is the filtered pack voltage in mV, battery_handle.c); 600 while
+#     the pack voltage is not measured yet. current_pulse is stored after the clamp, so the PID cannot wind up past it.
+edit("Hiwonder/Peripherals/encoder_motor.c", [(
+    "        pulse = pulse > 1000 ?  1000 : pulse;\n        pulse = pulse < -1000 ? -1000 : pulse;",
+    """        {   /* WAROTRANS PATCH item 10: voltage-compensated PWM cap */
+            extern float battery_volt;
+            float cap = battery_volt < 3000.0f ? 600.0f
+                      : (battery_volt > WT_MOTOR_VMAX_MV ? 1000.0f * WT_MOTOR_VMAX_MV / battery_volt : 1000.0f);
+            pulse = pulse > cap ?  cap : pulse;
+            pulse = pulse < -cap ? -cap : pulse;
+        }"""),
+    ("void encoder_motor_control(EncoderMotorObjectTypeDef *self, float period)\n",
+     "#define WT_MOTOR_VMAX_MV 8000.0f  /* WAROTRANS PATCH item 10: max average motor voltage (motors rated 8 V, operator 2026-11-18) */\n"
+     "void encoder_motor_control(EncoderMotorObjectTypeDef *self, float period)\n"),
+])
+# 11. battery_handle.c: low-voltage buzzer for the 3S pack (stock 6.3 V is a 2S value): 10.2 V = 3.4 V/cell
+edit("Hiwonder/System/battery_handle.c", [(
+    "static uint16_t battery_min_limit = 6300;",
+    "static uint16_t battery_min_limit = 10200;  /* WAROTRANS PATCH item 11: 3S pack, 3.4 V/cell */")])
 print("ok")

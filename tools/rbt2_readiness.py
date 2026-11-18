@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 REQUIRED_NODES = (
     "rrc_lite", "base_controller", "sensor_adapter", "ekf_filter_node", "amcl", "map_server",
     "bt_navigator", "controller_server", "planner_server", "collision_monitor", "velocity_smoother",
-    "cmd_vel_authority_gate", "recovery_guard", "robot_gateway",
+    "cmd_vel_authority_gate", "recovery_guard", "robot_gateway", "sllidar_node",
 )
 GATE = "cmd_vel_authority_gate"
 MAX_CLOCK_SKEW_S = 2.0
@@ -45,6 +45,7 @@ class Facts:
     cmd_vel_motor_publishers: list[str] = field(default_factory=list)
     tf_ok: dict[str, bool] = field(default_factory=dict)
     amcl_pose_seen: bool = False
+    scan_seen: bool | None = None             # None = not checked (unit tests of older Facts)
     battery_percentage: float | None = None   # 0..1 from /battery/estimate
     battery_mode: str | None = None
     simulated_battery: str | None = None      # SIM_BATTERY_PERCENT of the service env, if set
@@ -74,6 +75,10 @@ def evaluate(f: Facts) -> list[Check]:
     bad_tf = [k for k, ok in f.tf_ok.items() if not ok]
     checks.append(Check("tf", bool(f.tf_ok) and not bad_tf, True,
                         "map->odom->base_footprint OK" if not bad_tf and f.tf_ok else "missing: " + ", ".join(bad_tf or ["(none checked)"])))
+
+    if f.scan_seen is not None:
+        checks.append(Check("lidar", f.scan_seen, True, "/scan received" if f.scan_seen
+                            else "no /scan: LiDAR missing on USB or sllidar_node died (2026-11-18: died at boot, no respawn)"))
 
     checks.append(Check("amcl", f.amcl_pose_seen, True,
                         "/amcl_pose seen" if f.amcl_pose_seen else "no /amcl_pose yet (set the pose: web LOCALIZE)"))
@@ -138,6 +143,10 @@ def collect(seconds: float) -> Facts:  # pragma: no cover - needs rclpy on the P
         f.amcl_pose_seen = True
 
     node.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", on_amcl, 1)
+    from rclpy.qos import qos_profile_sensor_data
+    from sensor_msgs.msg import LaserScan
+    f.scan_seen = False
+    node.create_subscription(LaserScan, "/scan", lambda _m: setattr(f, "scan_seen", True), qos_profile_sensor_data)
     node.create_subscription(BatteryEstimate, "/battery/estimate", lambda m: last_battery.append(m), 10)
     buf = Buffer()
     TransformListener(buf, node)
@@ -173,7 +182,7 @@ def collect(seconds: float) -> Facts:  # pragma: no cover - needs rclpy on the P
 
 def main() -> int:  # pragma: no cover - needs rclpy on the Pi
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--broker", required=True, help="MQTT broker host (the backend laptop)")
+    ap.add_argument("--broker", required=True, help="MQTT broker host (the backend laptop), or auto")
     ap.add_argument("--backend", default="", help="backend base URL for the clock check, e.g. http://192.168.137.1:5090")
     ap.add_argument("--seconds", type=float, default=25.0, help="longest wait for discovery")
     a = ap.parse_args()
@@ -187,7 +196,13 @@ def main() -> int:  # pragma: no cover - needs rclpy on the Pi
                 f.simulated_battery = value
             elif key == "MOTORS_ENABLED":
                 f.motors_enabled = value
-    f.broker_ok = broker_reachable(a.broker)
+    broker = a.broker
+    if broker.strip().lower() == "auto":  # same discovery as the service (BROKER=auto)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from broker_discovery import resolve
+        broker = resolve("auto") or ""
+        print(f"broker auto -> {broker or 'NOT FOUND'}")
+    f.broker_ok = bool(broker) and broker_reachable(broker)
     if a.backend:
         f.clock_skew_s = clock_skew(a.backend)
 

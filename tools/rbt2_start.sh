@@ -9,6 +9,10 @@ source /opt/ros/jazzy/setup.bash
 source "$HOME/ros2_ws/install/setup.bash"          # sllidar_ros2
 source "$HOME/warotrans_rbt2_ws/install/setup.bash"
 MODE=${MODE:-manual}
+# Fast DDS shared-memory segments of killed processes stay in /dev/shm; 2026-11-18 ~120 of them (after SIGKILLed
+# calibration stacks) made robot_gateway receive nothing (telemetry pose/battery null). "shm clean" removes only
+# segments no live process holds.
+timeout 20 fastdds shm clean >/dev/null 2>&1 || true
 MOTORS_ENABLED=${MOTORS_ENABLED:-false}
 # Own DDS domain: RBT-001 uses 0 on the same LAN (laptop RViz / ros2 CLI on 0 would see RBT-001 only).
 export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-31}

@@ -62,3 +62,43 @@ def gravity_check(accel_mps2: Sequence[float], tolerance: float = 0.15) -> bool:
     """True if |a| is within tolerance of 1 g (useful at rest to catch a wrong imu_units setting)."""
     mag = math.sqrt(sum(v * v for v in accel_mps2))
     return abs(mag - G) <= tolerance * G
+
+
+class GyroBiasEstimator:
+    """Gyro bias learned while the wheels are still (encoder rps ~ 0), subtracted always.
+
+    2026-11-18 on RBT-002: the QMI8658 z bias is ~0.0034 rad/s (0.2 deg/s, 12 deg/min). The EKF integrated it raw;
+    while the robot stood still AMCL does not update, so the heading in the map drifted 38 deg and RPP saw
+    "collision ahead" next to a wall that was beside the robot.
+    """
+
+    def __init__(self, still_rps: float = 0.005, settle_s: float = 0.5, tau_s: float = 4.0,
+                 max_bias_radps: float = 0.05) -> None:
+        self.still_rps = still_rps
+        self.settle_s = settle_s
+        self.tau_s = tau_s
+        self.max_bias = max_bias_radps
+        self.bias = [0.0, 0.0, 0.0]
+        self.samples = 0
+        self._still_since: Optional[float] = None
+        self._last_t: Optional[float] = None
+
+    def on_wheels(self, rps: Sequence[float], now: float) -> None:
+        if all(abs(v) < self.still_rps for v in rps):
+            if self._still_since is None:
+                self._still_since = now
+        else:
+            self._still_since = None
+
+    def still(self, now: float) -> bool:
+        return self._still_since is not None and now - self._still_since >= self.settle_s
+
+    def apply(self, gyro: Sequence[float], now: float) -> tuple[float, float, float]:
+        if self.still(now) and all(abs(g) < self.max_bias for g in gyro):
+            dt = 0.02 if self._last_t is None else min(0.2, max(0.0, now - self._last_t))
+            # fast start (plain mean of the first ~2 s), then an EMA with tau_s
+            k = 1.0 / (self.samples + 1) if self.samples < 100 else dt / self.tau_s
+            self.bias = [b + k * (g - b) for b, g in zip(self.bias, gyro)]
+            self.samples += 1
+        self._last_t = now
+        return tuple(g - b for g, b in zip(gyro, self.bias))
