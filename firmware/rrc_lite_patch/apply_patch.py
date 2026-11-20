@@ -174,8 +174,8 @@ static void motor_set_checked(uint8_t id, float rps)
             change_battery_limit(cmd->limit);
         }break;
         case 0x10: { /* WAROTRANS PATCH: version query */
-            PacketReportVersionTypeDef v = { .sub_cmd = 0x10, .major = 1, .minor = 2,
-                                             .flags = 0x0007, .build = 20261118 };
+            PacketReportVersionTypeDef v = { .sub_cmd = 0x10, .major = 1, .minor = 3,
+                                             .flags = 0x0007, .build = 20261120 };
             packet_transmit(&packet_controller, PACKET_FUNC_SYS, &v, sizeof(v));
         }break;"""),
 ])
@@ -225,9 +225,12 @@ static void wt_motor_feedback(uint32_t now)
 #define WT_LED_FAR_MM   500u
 #define WT_LED_NEAR_MM  200u
 #define WT_LED_HYST_MM  20u
+#define WT_LED_CONFIRM  3u    /* v1.3: a new zone must be seen on 3 reads in a row (300 ms): no flicker on one echo */
 static void wt_sonar_leds(uint16_t mm)
 {
     static int8_t zone = -1;              /* -1 = never written, 0 blue, 1 yellow, 2 red */
+    static int8_t pending = -1;
+    static uint8_t pending_n = 0;
     int8_t z = zone;
     if(z < 0) {
         z = mm > WT_LED_FAR_MM ? 0 : (mm >= WT_LED_NEAR_MM ? 1 : 2);
@@ -238,6 +241,19 @@ static void wt_sonar_leds(uint16_t mm)
         else if(mm < WT_LED_NEAR_MM - WT_LED_HYST_MM) z = 2;
     } else {
         if(mm > WT_LED_NEAR_MM + WT_LED_HYST_MM) z = (mm > WT_LED_FAR_MM + WT_LED_HYST_MM) ? 0 : 1;
+    }
+    if(zone >= 0 && z != zone) {
+        if(z == pending) {
+            if(++pending_n < WT_LED_CONFIRM) z = zone;   /* not confirmed yet: keep the shown colour */
+        } else {
+            pending = z;
+            pending_n = 1;
+            z = zone;
+        }
+    }
+    if(z == zone) {
+        pending = -1;
+        pending_n = 0;
     }
     /* v1.2: rewrite every 1 s even without a zone change. The sonar is powered by the pack, the MCU also by USB:
      * switching the pack on resets the sonar LEDs while the MCU still remembers the zone, so a change-only write
@@ -262,8 +278,11 @@ static void wt_sonar(uint32_t now)
     uint16_t mm = 0;
     /* 3 ms timeout: the IWDG window is ~20 ms and this loop refreshes it every 10 ms */
     if(HAL_I2C_Mem_Read(&hi2c1, WT_SONAR_ADDR << 1, 0x00, I2C_MEMADD_SIZE_8BIT, buf, 2, 3) == HAL_OK) {
-        mm = (uint16_t)(buf[0] | (buf[1] << 8));
-        if(mm > 5000) mm = 5000;
+        /* v1.3: this sonar reports CENTIMETRES and saturates at 255 (= 2.55 m or more). 2026-11-20: it read 255 with
+         * the LiDAR seeing 2.8 m free ahead, and 44-88 for echoes; read as mm, far was 25.5 cm = always yellow, never
+         * blue, and the echoes flashed red. Converted to mm here: the packet to the host and the LEDs use mm. */
+        uint16_t raw = (uint16_t)(buf[0] | (buf[1] << 8));
+        mm = raw >= 500u ? 5000u : (uint16_t)(raw * 10u);
         if(mm > 0) wt_sonar_leds(mm);     /* 0 = no echo / bad read: keep the current colour */
     }
     packet_transmit(&packet_controller, PACKET_FUNC_ULTRASONIC, &mm, sizeof(mm));

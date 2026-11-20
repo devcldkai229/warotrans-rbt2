@@ -87,3 +87,22 @@ Driver Pi (`warotrans_rrc_lite`) đã hỗ trợ sẵn các mục 2, 3, 4 và đ
 - **Item 9:** ghi lại màu đèn siêu âm mỗi 1 s, kể cả khi vùng không đổi. Cảm biến lấy điện từ pin còn MCU sống nhờ USB, nên khi bật pin đèn bị reset mà firmware 1.1 không ghi lại.
 - **Item 11 (mới):** còi báo pin yếu 10.2 V (3.4 V/cell) thay cho 6.3 V của pin 2S.
 - Version 1.2, build 20261118. sha256 `9562c9eb6450d43182c5b820b767e11d57fb6801250b18f17bdfa183f16ce7b6`.
+
+## v1.3 (2026-11-20): sonar đọc đúng đơn vị centimet, đèn hết chập chờn
+
+**Nguyên nhân:** sonar trên RBT-002 trả về **centimet**, kịch trần ở 255 (tức từ 2.55 m trở lên). Firmware cũ hiểu giá trị đó là milimet, nên đọc sai 10 lần:
+- khi phía trước trống, LiDAR thấy 2.8 m nhưng sonar báo 255. Firmware hiểu là 25.5 cm, nên đèn **luôn vàng và không bao giờ lên xanh**;
+- các tiếng dội lẻ 44–88 bị hiểu thành 4–9 cm, nên đèn **chớp đỏ** dù vật ở xa.
+
+**Đã sửa:**
+- Đổi sang mm: `mm = raw × 10`; giá trị từ 500 trở lên tính là 5000 mm. Cả gói gửi lên host và đèn đều dùng mm.
+- Một vùng màu mới phải xuất hiện **3 lần đọc liên tiếp** (300 ms) mới được đổi màu.
+- Ngưỡng giữ nguyên: xanh > 500 mm, vàng 200–500 mm, đỏ < 200 mm, trễ 20 mm.
+
+**Phiên bản:** 1.3, build 20261120. File 62 196 byte, sha256 `4cd962ec5f76c1dd4945c33dbefb6ade09e3c8d3992566627aaac1e2645880fd`.
+
+**Cách nạp:** nạp lúc **pin đang bật**, vì anh xác nhận Pi lấy nguồn từ RRC Lite và không tách riêng được. Trước khi nạp đã dừng hết stack ROS. Nạp thành công ở lần thử thứ 2 và đã kiểm tra lại 100 %.
+
+**Kết quả sau khi nạp:** đọc được 2550 mm khi phía trước trống; 47/47 lần đọc rơi vào vùng xanh; 0 lỗi CRC.
+
+**Bản sao lưu trên Pi:** `~/warotrans_rbt2_backups/rrc_lite_warotrans_v1.3_4cd962ec.bin`. Bản v1.2 cũ: `rrc_lite_warotrans_v1.2_9562c9eb.bin`.
