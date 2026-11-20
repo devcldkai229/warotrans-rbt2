@@ -174,7 +174,7 @@ static void motor_set_checked(uint8_t id, float rps)
             change_battery_limit(cmd->limit);
         }break;
         case 0x10: { /* WAROTRANS PATCH: version query */
-            PacketReportVersionTypeDef v = { .sub_cmd = 0x10, .major = 1, .minor = 4,
+            PacketReportVersionTypeDef v = { .sub_cmd = 0x10, .major = 1, .minor = 5,
                                              .flags = 0x0007, .build = 20261120 };
             packet_transmit(&packet_controller, PACKET_FUNC_SYS, &v, sizeof(v));
         }break;"""),
@@ -223,7 +223,7 @@ static void wt_motor_feedback(uint32_t now)
  * (TurboPi Sonar.py): 2 = RGB mode (0 = fixed colour), 3..5 = LED0 RGB, 6..8 = LED1 RGB. Written only when
  * the zone changes, in one 7-byte burst starting at register 2. */
 #define WT_LED_FAR_MM   500u
-#define WT_LED_NEAR_MM  200u
+#define WT_LED_NEAR_MM  250u   /* v1.5: 25 cm; below ~15-20 cm the sonar is blind and reads ~20 cm anyway */
 #define WT_LED_HYST_MM  20u
 /* v1.4 (2026-11-20, measured with a hand at 40 / 10 cm): this sonar answers 255 ("no echo / >= 2.55 m") on ~95 % of
  * the 10 Hz reads and gives a real distance only about once a second. 255 is therefore NOT "far": the LEDs follow the
@@ -276,9 +276,11 @@ static void wt_sonar(uint32_t now)
     int8_t show = wt_led_zone < 0 ? 0 : wt_led_zone;
     /* 3 ms timeout: the IWDG window is ~20 ms and this loop refreshes it every 10 ms */
     if(HAL_I2C_Mem_Read(&hi2c1, WT_SONAR_ADDR << 1, 0x00, I2C_MEMADD_SIZE_8BIT, buf, 2, 3) == HAL_OK) {
-        /* v1.3: centimetres, 255 = no echo / >= 2.55 m. The host gets mm (255 -> 2550 = "nothing within 2.55 m"). */
+        /* v1.5 (2026-11-20, board held at ~40 / ~20 / ~8 cm): the raw value is in HALF-centimetres (40 cm -> ~80,
+         * 20 cm -> ~38); 255 = no echo (range ends at ~1.27 m). v1.3/v1.4 read it as cm: every distance doubled, so
+         * 40 cm showed blue and nothing ever reached red. mm = raw x 5; no echo -> 0 for the host (= no obstacle). */
         uint16_t raw = (uint16_t)(buf[0] | (buf[1] << 8));
-        mm = raw >= 255u ? 2550u : (uint16_t)(raw * 10u);
+        mm = (raw > 0u && raw < 255u) ? (uint16_t)(raw * 5u) : 0u;
         if(raw > 0u && raw < 255u) {      /* a valid echo */
             last_valid = now;
             int8_t z = wt_sonar_zone(mm);

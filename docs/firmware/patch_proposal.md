@@ -124,3 +124,28 @@ Driver Pi (`warotrans_rrc_lite`) đã hỗ trợ sẵn các mục 2, 3, 4 và đ
 **Cách nạp:** nạp lúc pin đang bật, đã dừng các service trước khi nạp. Nạp thành công, kiểm tra lại 100 %.
 
 **Bản sao lưu trên Pi:** `~/warotrans_rbt2_backups/rrc_lite_warotrans_v1.4_6949f617.bin`.
+
+## v1.5 (2026-11-20): đơn vị của sonar là nửa centimet
+
+**Đo thực tế:** đặt tấm bìa trước sonar ở các khoảng cách khác nhau, firmware v1.4 báo ra:
+
+| Tấm bìa ở | v1.4 báo | Nhận xét |
+|---|---|---|
+| ~40 cm | ~800 mm | gấp đôi |
+| ~20 cm | ~380 mm | gấp đôi |
+| ~8 cm | ~350–450 mm | sonar mù ở tầm gần |
+
+**Kết luận:** giá trị thô tính theo **0.5 cm**, nên `mm = raw × 5`. Giá trị 255 nghĩa là không có tiếng vọng; tầm đo khoảng 1.27 m. Bản v1.3/v1.4 tính nhầm thành cm, mọi khoảng cách bị gấp đôi: vật ở 40 cm ra xanh, và không lúc nào ra đỏ.
+
+**Không có tiếng vọng:** gửi 0 lên host, tức `/ultrasonic/front` báo vô cực.
+
+**Ngưỡng màu:**
+- đỏ: dưới 25 cm (gồm cả vùng mù từ khoảng 15–20 cm trở vào);
+- vàng: 25–50 cm;
+- xanh: trên 50 cm, hoặc không có tiếng vọng.
+
+**Phiên bản:** 1.5, 62 152 byte, sha256 `2cb9767a490db0a06096d7aaacd27300a67740bc1911b9973da7162d1323f9fe`.
+
+**Cách nạp:** nạp lúc pin đang bật. Đã kiểm tra lại 100 % sau khi ghi.
+
+**Bản sao lưu trên Pi:** `~/warotrans_rbt2_backups/rrc_lite_warotrans_v1.5_2cb9767a.bin`.
