@@ -106,3 +106,21 @@ Driver Pi (`warotrans_rrc_lite`) đã hỗ trợ sẵn các mục 2, 3, 4 và đ
 **Kết quả sau khi nạp:** đọc được 2550 mm khi phía trước trống; 47/47 lần đọc rơi vào vùng xanh; 0 lỗi CRC.
 
 **Bản sao lưu trên Pi:** `~/warotrans_rbt2_backups/rrc_lite_warotrans_v1.3_4cd962ec.bin`. Bản v1.2 cũ: `rrc_lite_warotrans_v1.2_9562c9eb.bin`.
+
+## v1.4 (2026-11-20): đèn chạy theo tiếng vọng hợp lệ, không coi 255 là "xa"
+
+**Đo thực tế:** thử với bàn tay ở 40 cm và 10 cm, sonar vẫn trả **255 ở 373/394 lần đọc**. Khoảng cách thật (410–490 mm khi tay ở 40 cm) chỉ xuất hiện khoảng một lần mỗi giây.
+
+**Vì sao v1.3 luôn xanh:** v1.3 coi 255 là "xa" và cần 3 lần đọc liên tiếp mới đổi màu. Các lần đo thật quá lẻ tẻ nên không bao giờ đủ 3 lần.
+
+**Cách v1.4 xử lý:**
+- 255 và 0 được coi là "không có tiếng vọng", không còn là "xa".
+- Màu đèn theo tiếng vọng hợp lệ gần nhất.
+- Muốn đổi sang vùng màu mới, cần 2 tiếng vọng hợp lệ cùng vùng trong vòng 1 giây.
+- Nếu 1.5 giây không có tiếng vọng hợp lệ nào thì đèn về xanh, coi như phía trước trống.
+
+**Phiên bản:** 1.4, 62 160 byte, sha256 `6949f617fc3b4e7674f2910d3f14fd8a73b3a7067e91dd5541d97a9153426881`.
+
+**Cách nạp:** nạp lúc pin đang bật, đã dừng các service trước khi nạp. Nạp thành công, kiểm tra lại 100 %.
+
+**Bản sao lưu trên Pi:** `~/warotrans_rbt2_backups/rrc_lite_warotrans_v1.4_6949f617.bin`.
