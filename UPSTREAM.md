@@ -42,3 +42,4 @@ Quy tắc:
 | 2026-11-17 | core sync | `feature/evidence-edge@acadfac` + working tree chưa commit | +0 ~3 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet, warotrans_msgs, warotrans_camera, warotrans_evidence_agent; maps map_one_v014 |
 | 2026-11-17 | core sync | `feature/evidence-edge@acadfac` + working tree chưa commit | +0 ~4 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet, warotrans_msgs, warotrans_camera, warotrans_evidence_agent; maps map_one_v014 |
 | 2026-11-17 | core sync | `feature/robot-network@205e248` | +0 ~3 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet, warotrans_msgs, warotrans_camera, warotrans_evidence_agent; maps map_one_v014 |
+| 2026-11-21 | patch | `fix/evidence-run-poll@4162f37` (5 files only, no core sync) | +0 ~5 -0 | warotrans_camera, warotrans_evidence_agent |
