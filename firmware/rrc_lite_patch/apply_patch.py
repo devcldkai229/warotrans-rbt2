@@ -174,7 +174,7 @@ static void motor_set_checked(uint8_t id, float rps)
             change_battery_limit(cmd->limit);
         }break;
         case 0x10: { /* WAROTRANS PATCH: version query */
-            PacketReportVersionTypeDef v = { .sub_cmd = 0x10, .major = 1, .minor = 5,
+            PacketReportVersionTypeDef v = { .sub_cmd = 0x10, .major = 1, .minor = 7,
                                              .flags = 0x0007, .build = 20261120 };
             packet_transmit(&packet_controller, PACKET_FUNC_SYS, &v, sizeof(v));
         }break;"""),
@@ -192,6 +192,51 @@ extern volatile uint32_t motor_last_cmd_tick;
 uint8_t motors_initialised(void);
 void motors_init_at_boot(void);
 extern I2C_HandleTypeDef hi2c1;
+void MX_I2C1_Init(void);
+
+/* v1.6 (2026-11-20): after a power-up the sonar held SDA low and I2C1 stayed BUSY. HAL_I2C_Mem_Read/Write then wait
+ * I2C_TIMEOUT_BUSY_FLAG = 25 ms (hard-coded, whatever Timeout is passed) > the 20 ms IWDG: the board reset every
+ * ~130 ms (455 times a minute), so battery and IMU reports never went out. Now no HAL I2C call is made while the bus
+ * is BUSY; the bus is freed at most every WT_I2C_RECOVER_MS (9 SCL pulses, STOP, peripheral reset, re-init). */
+#define WT_I2C_RECOVER_MS 500u
+static void wt_delay_us(uint32_t us)
+{
+    for(volatile uint32_t n = us * 40u; n > 0u; --n) {}   /* ~1 us per 40 loops at 168 MHz, only needs to be >= */
+}
+
+static uint8_t wt_i2c_ready(uint32_t now)
+{
+    static uint32_t last_try = 0;
+    if(!__HAL_I2C_GET_FLAG(&hi2c1, I2C_FLAG_BUSY) && hi2c1.State == HAL_I2C_STATE_READY) return 1;
+    if(now - last_try < WT_I2C_RECOVER_MS) return 0;
+    last_try = now;
+    HAL_IWDG_Refresh(&hiwdg);
+    SET_BIT(hi2c1.Instance->CR1, I2C_CR1_SWRST);
+    CLEAR_BIT(hi2c1.Instance->CR1, I2C_CR1_SWRST);
+    HAL_I2C_DeInit(&hi2c1);                       /* PB6 SCL / PB7 SDA back to GPIO */
+    GPIO_InitTypeDef g = {0};
+    g.Pin = GPIO_PIN_6 | GPIO_PIN_7;
+    g.Mode = GPIO_MODE_OUTPUT_OD;
+    g.Pull = GPIO_NOPULL;
+    g.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6 | GPIO_PIN_7, GPIO_PIN_SET);
+    HAL_GPIO_Init(GPIOB, &g);
+    wt_delay_us(10);
+    for(int i = 0; i < 9 && HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == GPIO_PIN_RESET; ++i) {
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+        wt_delay_us(5);
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+        wt_delay_us(5);
+    }
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);   /* STOP: SDA rises while SCL is high */
+    wt_delay_us(5);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+    wt_delay_us(5);
+    HAL_GPIO_DeInit(GPIOB, GPIO_PIN_6 | GPIO_PIN_7);
+    MX_I2C1_Init();                               /* clock, AF pins and the peripheral again */
+    HAL_IWDG_Refresh(&hiwdg);
+    return !__HAL_I2C_GET_FLAG(&hi2c1, I2C_FLAG_BUSY) && hi2c1.State == HAL_I2C_STATE_READY;
+}
 
 static void wt_motor_watchdog(uint32_t now)
 {
@@ -239,6 +284,7 @@ static void wt_sonar_led_write(int8_t z, uint32_t now)
     /* v1.2: rewrite every 1 s even without a zone change (the pack powers the sonar, the MCU also runs on USB:
      * switching the pack on resets the sonar LEDs while the MCU still remembers the zone). */
     if(z == wt_led_zone && now - wt_led_last_write < 1000u) return;
+    if(__HAL_I2C_GET_FLAG(&hi2c1, I2C_FLAG_BUSY)) return;   /* v1.6: never wait 25 ms on a stuck bus */
     static const uint8_t rgb[3][3] = {{0, 0, 255}, {255, 160, 0}, {255, 0, 0}};
     uint8_t buf[7] = {0, rgb[z][0], rgb[z][1], rgb[z][2], rgb[z][0], rgb[z][1], rgb[z][2]};
     if(HAL_I2C_Mem_Write(&hi2c1, WT_SONAR_ADDR << 1, 0x02, I2C_MEMADD_SIZE_8BIT, buf, sizeof(buf), 3) == HAL_OK) {
@@ -275,7 +321,8 @@ static void wt_sonar(uint32_t now)
     uint16_t mm = 0;
     int8_t show = wt_led_zone < 0 ? 0 : wt_led_zone;
     /* 3 ms timeout: the IWDG window is ~20 ms and this loop refreshes it every 10 ms */
-    if(HAL_I2C_Mem_Read(&hi2c1, WT_SONAR_ADDR << 1, 0x00, I2C_MEMADD_SIZE_8BIT, buf, 2, 3) == HAL_OK) {
+    HAL_IWDG_Refresh(&hiwdg);
+    if(wt_i2c_ready(now) && HAL_I2C_Mem_Read(&hi2c1, WT_SONAR_ADDR << 1, 0x00, I2C_MEMADD_SIZE_8BIT, buf, 2, 3) == HAL_OK) {
         /* v1.5 (2026-11-20, board held at ~40 / ~20 / ~8 cm): the raw value is in HALF-centimetres (40 cm -> ~80,
          * 20 cm -> ~38); 255 = no echo (range ends at ~1.27 m). v1.3/v1.4 read it as cm: every distance doubled, so
          * 40 cm showed blue and nothing ever reached red. mm = raw x 5; no echo -> 0 for the host (= no obstacle). */
@@ -315,8 +362,28 @@ void button_event_callback(ButtonObjectTypeDef *button,  ButtonEventIDEnum event
             wt_motor_watchdog(now);
             wt_motor_feedback(now);
             wt_sonar(now);
+            wt_battery(now);
         }
         osDelay(10);"""),
+    # v1.7 (2026-11-20): the battery check left the FreeRTOS timer task (lowest priority, 2). On RBT-002 that task
+    # stalled 30-55 s at a time and then caught up: ~50 battery reports arrived in one burst, the Pi's estimate went
+    # "stale" (3 s) and the backend refused dispatch (battery_stale, 15 s). The PWM cap (item 10) also used that
+    # frozen battery_volt. The app task runs every 10 ms (encoder feedback is steady), so it now runs the same
+    # callback every BATTERY_TASK_PERIOD; the timer is no longer started.
+    ("    osTimerStart(battery_check_timerHandle, BATTERY_TASK_PERIOD);\n",
+     "    /* WAROTRANS PATCH v1.7: battery check runs in this task (wt_battery), not in the timer task */\n"),
+    ("void button_event_callback(ButtonObjectTypeDef *button,  ButtonEventIDEnum event)\n{",
+     """void battery_check_timer_callback(void *argument);
+static void wt_battery(uint32_t now)   /* WAROTRANS PATCH v1.7 */
+{
+    static uint32_t last = 0;
+    if(now - last < BATTERY_TASK_PERIOD) return;
+    last = now;
+    battery_check_timer_callback(NULL);
+}
+
+void button_event_callback(ButtonObjectTypeDef *button,  ButtonEventIDEnum event)
+{"""),
 ])
 
 # 4b. app.c: call the boot init right after the LEDs
