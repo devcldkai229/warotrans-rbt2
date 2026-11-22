@@ -134,7 +134,8 @@ def _setup(context):
             actions.append(Node(package="warotrans_evidence_agent", executable="evidence_agent", name="evidence_agent",
                                 output="screen",
                                 parameters=[cfg("evidence_agent_rbt002.yaml"),
-                                            {"recorder_url": f"http://{mqtt_host}:5095", "robot_code": lc("robot_code")}]))
+                                            {"recorder_url": lc("recorder_url").strip() or f"http://{mqtt_host}:5095",
+                                             "robot_code": lc("robot_code")}]))
     else:
         actions.append(LogInfo(msg="[rbt002 fleet] mqtt_host empty: robot_gateway NOT started (no backend link)"))
     return actions
@@ -151,6 +152,8 @@ def generate_launch_description():
         DeclareLaunchArgument("calibration_file", default_value="~/.config/warotrans/rbt002_calibration.yaml"),
         DeclareLaunchArgument("mqtt_host", default_value="", description="MQTT broker (backend laptop)"),
         DeclareLaunchArgument("robot_code", default_value="RBT-002"),
+        DeclareLaunchArgument("recorder_url", default_value="",
+                              description="Evidence Recorder (empty: http://<mqtt_host>:5095, the laptop)"),
         DeclareLaunchArgument("authority_publisher", default_value="robot_gateway",
                               description="only node allowed to open the cmd_vel gate (nav tests: the test runner)"),
         DeclareLaunchArgument("simulated_battery_percent", default_value="",
