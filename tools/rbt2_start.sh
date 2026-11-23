@@ -57,6 +57,8 @@ if [ "$MODE" = fleet ] || [ "$MODE" = cloud ]; then
   if [ -n "${BROKER:-}" ]; then ARGS+=(mqtt_host:="$BROKER"); fi
   if [ -n "$RECORDER_URL" ]; then ARGS+=(recorder_url:="$RECORDER_URL"); fi
   if [ -n "${SIM_BATTERY_PERCENT:-}" ]; then ARGS+=(simulated_battery_percent:="$SIM_BATTERY_PERCENT"); fi
+  # ROUTE_GRAPH=<lane graph GeoJSON>: lane-graph mode (backend Traffic:Mode=Active, Nav2 Route Server).
+  if [ -n "${ROUTE_GRAPH:-}" ]; then ARGS+=(route_graph:="$ROUTE_GRAPH"); fi
   exec ros2 launch warotrans_rbt002_bringup fleet.launch.py "${ARGS[@]}"
 fi
 rm -f "$STATE"

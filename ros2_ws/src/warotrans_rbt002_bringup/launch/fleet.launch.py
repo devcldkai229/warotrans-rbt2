@@ -110,6 +110,8 @@ def _setup(context):
             "enable_authority_gate": "true",
             "gate_output_topic": "cmd_vel_motor",
             "required_authority_publisher": lc("authority_publisher"),
+            # Lane-graph mode: Nav2 Route Server on this graph (empty: the semantic costmap planner as before).
+            "route_graph": lc("route_graph"),
         }.items())
     actions.append(TimerAction(period=float(lc("nav_start_delay_sec")), actions=[nav_include]))
 
@@ -127,7 +129,8 @@ def _setup(context):
             PythonLaunchDescriptionSource(os.path.join(fleet, "launch", "fleet.launch.py")),
             launch_arguments={"params_file": gateway_params,
                               "robot_code": lc("robot_code"), "mqtt_host": mqtt_host,
-                              "semantic_manifest": os.path.join(bundle, "semantic_manifest.json")}.items()))
+                              "semantic_manifest": os.path.join(bundle, "semantic_manifest.json"),
+                              "route_graph": lc("route_graph")}.items()))
         if lc("camera").lower() == "true" and lc("evidence").lower() == "true":
             # Evidence: records the camera during trips and uploads to the Recorder on the backend laptop. The robot's
             # credential is WARO_EVIDENCE_TOKEN in ~/.config/warotrans/rbt002.env (never in this repository).
@@ -145,6 +148,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("bundle", description="semantic map bundle dir (same as the backend's)"),
         DeclareLaunchArgument("motors_enabled", default_value="false"),
+        DeclareLaunchArgument("route_graph", default_value="",
+                              description="lane graph GeoJSON: drive the backend's graph edges (traffic_mode=active)"),
         DeclareLaunchArgument("enable_ekf", default_value="true"),
         DeclareLaunchArgument("camera", default_value="true"),
         DeclareLaunchArgument("evidence", default_value="true"),
