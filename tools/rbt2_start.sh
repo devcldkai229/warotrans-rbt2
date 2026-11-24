@@ -3,7 +3,7 @@
 #   MODE=manual  (default) mobile control UI on :8080, base_controller takes /cmd_vel from control_gateway
 #   MODE=fleet   RBT-001-equivalent semantic traffic stack: EKF + AMCL + Nav2 + authority gate + robot_gateway
 #                BROKER=auto (default) finds the backend laptop by name / ICS address / LAN scan
-#                (tools/broker_discovery.py); BROKER=<ip|name> pins it. BUNDLE defaults to map_one_v014.
+#                (tools/broker_discovery.py); BROKER=<ip|name> pins it. BUNDLE defaults to map_one_v022.
 #   MODE=cloud   the fleet stack against AWS: MQTT over TLS to AWS IoT Core with this robot's thing certificate,
 #                evidence to the cloud Recorder; settings in ~/.config/warotrans/cloud.env (tools/cloud.env.example).
 set -eo pipefail
@@ -49,7 +49,7 @@ if [ "$MODE" = fleet ]; then
   fi
 fi
 if [ "$MODE" = fleet ] || [ "$MODE" = cloud ]; then
-  BUNDLE=${BUNDLE:-$(ros2 pkg prefix warotrans_navigation)/share/warotrans_navigation/maps/map_one_v014}
+  BUNDLE=${BUNDLE:-$(ros2 pkg prefix warotrans_navigation)/share/warotrans_navigation/maps/map_one_v022}
   echo "[rbt2_start] $MODE mode bundle=$BUNDLE broker=${BROKER:-<none>} motors=$MOTORS_ENABLED domain=$ROS_DOMAIN_ID sim_battery=${SIM_BATTERY_PERCENT:-off}"
   # ros2 launch rejects an empty "name:=" (2026-11-17: the unit restarted 2770 times on simulated_battery_percent:=),
   # so optional arguments are passed only when set.
@@ -57,8 +57,8 @@ if [ "$MODE" = fleet ] || [ "$MODE" = cloud ]; then
   if [ -n "${BROKER:-}" ]; then ARGS+=(mqtt_host:="$BROKER"); fi
   if [ -n "$RECORDER_URL" ]; then ARGS+=(recorder_url:="$RECORDER_URL"); fi
   if [ -n "${SIM_BATTERY_PERCENT:-}" ]; then ARGS+=(simulated_battery_percent:="$SIM_BATTERY_PERCENT"); fi
-  # ROUTE_GRAPH=<lane graph GeoJSON>: lane-graph mode (backend Traffic:Mode=Active, Nav2 Route Server).
-  if [ -n "${ROUTE_GRAPH:-}" ]; then ARGS+=(route_graph:="$ROUTE_GRAPH"); fi
+  # Lane-graph mode (ROUTE_GRAPH) was removed 2026-11-24: robot and backend must run the same traffic mode, a
+  # robot in another mode was invisible to traffic (audit B6). An old ROUTE_GRAPH in the env is ignored.
   exec ros2 launch warotrans_rbt002_bringup fleet.launch.py "${ARGS[@]}"
 fi
 rm -f "$STATE"

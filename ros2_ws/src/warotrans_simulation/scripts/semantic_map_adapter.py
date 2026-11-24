@@ -71,12 +71,11 @@ def world_to_pixel(
 # More than the footprint radius (hypot(0.18, 0.15) = 0.234 m).
 # Usual cruise of the real robot (nav2_params FollowPath desired_linear_vel; 2026-11-13: 0.10 -> 0.40 m/s, operator).
 CRUISE_SPEED_MPS = 0.35
-# 0: the planner's keep-out is the zone as drawn. The global costmap's InflationLayer already keeps the centre out of
-# the inscribed band (footprint + padding, 0.15 m) around it. Pre-inflating the mask by 0.25 m inflated keep-out TWICE:
-# on MAP-ONE-V017 the lane centres beside the shelf dividers (0.34 m from the line) sat at cost 99 (inscribed), which
-# NavFn treats as an obstacle, so robots could not plan straight down the shelf lanes (lab 2026-11-24, measured on the
-# robots' own /global_costmap/costmap).
-KEEPOUT_PLANNING_INFLATE_M = 0.0
+# More than the footprint half-width (0.15 m): traffic refuses any plan whose centre comes that close to a keep-out
+# zone (SemanticReservation.PlanHitsKeepout), so the planner must keep its distance itself. Nav2 applies costmap filters
+# AFTER the layers, so this mask is not inflated again by the InflationLayer. (2026-11-24: setting it to 0 made the
+# planner hug the MAP-ONE-V019 ZONE-KEEP-OUT-BOUND divider; every plan was refused, KEEPOUT_VIOLATION, robots stuck.)
+KEEPOUT_PLANNING_INFLATE_M = 0.25
 
 
 def rasterize_keepout(
@@ -263,7 +262,41 @@ def export_zone_list(zones: Iterable[dict[str, Any]], zone_type: str) -> list[di
                 policy = None
         if isinstance(policy, dict) and isinstance(policy.get("queueEndpointCode"), str) and policy["queueEndpointCode"]:
             entry["queueEndpointCode"] = policy["queueEndpointCode"]
+        # Zone-chain partition (policy "kind": BAY / TRANSIT / YARD / SLOT): exported to traffic_zones.json for the
+        # backend only, never to single_occupancy.json (the robot gate keeps checking cells).
+        kind = str(policy.get("kind") or "").upper() if isinstance(policy, dict) else ""
+        if kind in TRAFFIC_ZONE_KINDS:
+            entry["kind"] = kind
+            queues = policy.get("queueEndpointCodes")
+            if isinstance(queues, list):
+                entry["queueEndpointCodes"] = [str(q) for q in queues if isinstance(q, str) and q]
+            elif entry.get("queueEndpointCode"):
+                entry["queueEndpointCodes"] = [entry["queueEndpointCode"]]
         out.append(entry)
+    return out
+
+
+TRAFFIC_ZONE_KINDS = ("BAY", "TRANSIT", "YARD", "SLOT")
+
+
+def export_traffic_zones(zones: Iterable[dict[str, Any]], endpoints: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """SINGLE_OCCUPANCY zones whose policy has a zone-chain kind, with the endpoints whose pose lies inside."""
+    eps = [e for e in endpoints if e.get("code") and e.get("x") is not None and e.get("y") is not None]
+    out = []
+    for z in export_zone_list(zones, "SINGLE_OCCUPANCY"):
+        if "kind" not in z:
+            continue
+        inside = sorted(
+            str(e["code"]) for e in eps
+            if any(point_in_ring(float(e["x"]), float(e["y"]), [(p[0], p[1]) for p in ring]) for ring in z["rings"])
+        )
+        out.append({
+            "code": z["code"],
+            "kind": z["kind"],
+            "rings": z["rings"],
+            "queueEndpointCodes": z.get("queueEndpointCodes", []),
+            "endpointCodes": inside,
+        })
     return out
 
 
@@ -516,8 +549,7 @@ def export_from_snapshot(
     keepout_px = rasterize_keepout(
         zones, width=width, height=height, origin_x=origin_x, origin_y=origin_y, resolution=resolution
     )
-    # keepout_planning: for the planner (global costmap). Its InflationLayer adds the footprint margin; see
-    # KEEPOUT_PLANNING_INFLATE_M for why the mask is no longer pre-inflated.
+    # keepout_planning: for the planner, which checks the centre only; see KEEPOUT_PLANNING_INFLATE_M.
     keepout_planning_px = rasterize_keepout(
         zones,
         width=width,
@@ -577,12 +609,16 @@ def export_from_snapshot(
     no_stop_path = out_dir / "no_stop.json"
     no_stop_path.write_text(json.dumps({"zones": no_stop}, indent=2) + "\n", encoding="utf-8")
 
-    single = export_zone_list(zones, "SINGLE_OCCUPANCY")
+    single = [z for z in export_zone_list(zones, "SINGLE_OCCUPANCY") if "kind" not in z]
     single_path = out_dir / "single_occupancy.json"
     single_path.write_text(
         json.dumps({"zones": single, "enforcement": "NOT_SUPPORTED_STAGE2"}, indent=2) + "\n",
         encoding="utf-8",
     )
+
+    traffic_zones = export_traffic_zones(zones, endpoints)
+    traffic_zones_path = out_dir / "traffic_zones.json"
+    traffic_zones_path.write_text(json.dumps({"zones": traffic_zones}, indent=2) + "\n", encoding="utf-8")
 
     ep_canon = [
         {
@@ -618,6 +654,9 @@ def export_from_snapshot(
             ],
             "no_stop": [z["code"] for z in no_stop],
             "single_occupancy": [z["code"] for z in single],
+            "traffic_zones": [
+                {"code": z["code"], "kind": z["kind"], "queues": z["queueEndpointCodes"]} for z in traffic_zones
+            ],
             "endpoints": ep_canon,
             "footprint": {"length": 0.32, "width": 0.26, "padding": 0.02},
             "planner_id": planner_id,
@@ -645,6 +684,7 @@ def export_from_snapshot(
                 "lanes": "lanes.json",
                 "no_stop": "no_stop.json",
                 "single_occupancy": "single_occupancy.json",
+                "traffic_zones": "traffic_zones.json",
             },
             "note": "Stage-2 fingerprint includes lanes/zones/endpoints/yaw; SINGLE_OCCUPANCY not enforced",
         }
@@ -658,5 +698,6 @@ def export_from_snapshot(
         "lanes": lanes_path,
         "no_stop": no_stop_path,
         "single_occupancy": single_path,
+        "traffic_zones": traffic_zones_path,
         "manifest": manifest_path,
     }
