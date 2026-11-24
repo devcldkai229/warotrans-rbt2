@@ -66,6 +66,17 @@ def _setup(context):
     params.append(cfg("fleet_base.yaml"))
     base_override = {"motors_enabled": motors}
     odom_override = {"publish_tf": not ekf}  # exactly one owner of odom->base_footprint
+    if not ekf:
+        # A plain dict loses to the node-keyed "wheel_odom:" section of fleet_base.yaml (publish_tf: false), so the
+        # wheel odometry would publish no TF at all: give it as a node-keyed file, last.
+        import tempfile
+
+        import yaml
+
+        fd, odom_yaml = tempfile.mkstemp(prefix="wheel_odom_tf_", suffix=".yaml")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            yaml.safe_dump({"wheel_odom": {"ros__parameters": {"publish_tf": True}}}, f)
+        odom_override = odom_yaml
 
     actions = [
         LogInfo(msg=f"[rbt002 fleet] bundle={bundle} motors_enabled={motors} ekf={ekf} calibration="
