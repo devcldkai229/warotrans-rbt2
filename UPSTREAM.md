@@ -46,3 +46,4 @@ Quy tắc:
 | 2026-11-21 | patch | `fix/evidence-run-poll@4162f37` (5 files only, no core sync) | +0 ~5 -0 | warotrans_camera, warotrans_evidence_agent |
 | 2026-11-24 | core sync | `feature/technical-e2e@50f1240` | +17 ~17 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet, warotrans_msgs, warotrans_camera, warotrans_evidence_agent; maps map_one_v014, map_one_v021 |
 | 2026-11-24 | core sync | `feature/technical-e2e@b1b976b` | +0 ~3 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet, warotrans_msgs, warotrans_camera, warotrans_evidence_agent; maps map_one_v014, map_one_v021 |
+| 2026-11-24 | core sync | `feature/technical-e2e@de985fb` | +0 ~3 -0 | warotrans_navigation, warotrans_localization, warotrans_slam, warotrans_lane_planner, warotrans_fleet, warotrans_msgs, warotrans_camera, warotrans_evidence_agent; maps map_one_v014, map_one_v021 |
