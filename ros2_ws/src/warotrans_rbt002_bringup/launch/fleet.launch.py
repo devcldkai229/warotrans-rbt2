@@ -133,7 +133,7 @@ def _setup(context):
             "speed_mask": os.path.join(bundle, "speed.yaml"),
             "lanes_json": os.path.join(bundle, "lanes.json"),
             "extra_params_file": os.path.join(nav, "config", "nav2_params_lane_aware.yaml") + ";" +
-                                 cfg("nav2_rbt002.yaml"),
+                                 cfg("nav2_rbt002.yaml") + (";" + cfg("nav2_bench.yaml") if bench else ""),
             "enable_ekf": "true" if ekf else "false",
             "enable_cmd_vel_pipeline": "true",
             "enable_authority_gate": "true",
