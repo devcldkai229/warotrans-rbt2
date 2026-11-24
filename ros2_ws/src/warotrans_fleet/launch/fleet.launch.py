@@ -29,6 +29,11 @@ def gateway_overrides(arg, environ) -> tuple[dict, str]:
             overrides[name] = arg(name)
     if arg("mqtt_port"):
         overrides["mqtt_port"] = int(arg("mqtt_port"))
+    # Lane-graph mode (backend Traffic:Mode=Active): the robot drives the granted graph edges with FollowPath, no
+    # free-space planning on the costmap. The expected graph hash is the one the backend embedded in the GeoJSON.
+    if arg("route_graph"):
+        overrides["traffic_mode"] = "active"
+        overrides["route_graph"] = os.path.expanduser(arg("route_graph"))
 
     log = ""
     manifest_path = os.path.expanduser(arg("semantic_manifest"))
@@ -95,6 +100,8 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("mqtt_host", default_value=""),
             DeclareLaunchArgument("mqtt_port", default_value=""),
             DeclareLaunchArgument("map_version_code", default_value=""),
+            DeclareLaunchArgument("route_graph", default_value="",
+                                  description="lane graph GeoJSON (backend route-graph API): traffic_mode=active"),
             DeclareLaunchArgument(
                 "semantic_manifest",
                 default_value="",

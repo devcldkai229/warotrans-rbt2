@@ -14,7 +14,7 @@ route_server:
     path_density: 0.05             # m between poses of the dense path handed to FollowPath
     smooth_corners: true
     smoothing_radius: 0.1          # lanes are 0.45–0.6 m wide: a larger arc pulls the robot off the lane at corners
-    enable_nn_search: true         # start / goal pose → nearest reachable node (searched on the global costmap)
+    enable_nn_search: false        # lane-graph mode: nearest node by distance only, no costmap
     # A node counts as passed within this radius (tracking, speed-limit and rerouting operations).
     radius_to_achieve_node: 0.25
     # Start / goal nodes: must cover the goal checker tolerance, or tracking never finishes at the goal.
