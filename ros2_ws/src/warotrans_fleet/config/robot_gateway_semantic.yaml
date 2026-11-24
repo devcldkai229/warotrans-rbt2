@@ -30,10 +30,21 @@ robot_gateway:
     terminal_status_hold_sec: 3.0
     command_tick_hz: 5.0
     command_ledger_size: 500
+    # TRN-03: NAVIGATE / CANCEL / LOCALIZE past expiresAt + this many seconds are refused (COMMAND_EXPIRED); < 0 = off.
+    command_expiry_skew_sec: 2.0
     # Manual drive publishes straight to cmd_vel_topic, which would bypass collision_monitor and the authority
     # gate. Off while the robot is under traffic control.
     teleop_enabled: false
     cmd_vel_topic: "cmd_vel_safe"
+    # Map building from the web (START_MAPPING / STOP_MAPPING): manual drive is allowed only while a mapping session
+    # runs, always with Drive Assist, the authority gate held open for it (a STOP still wins). AMCL + map_server are
+    # paused through lifecycle_manager_localization while slam_toolbox maps on /mapping/map; the finished map and its
+    # pose graph are also kept in mapping_local_dir/<session>.
+    mapping_enabled: true
+    mapping_localization_manager: "lifecycle_manager_localization"
+    mapping_map_topic: "/mapping/map"
+    mapping_slam_params_file: ""     # "" = warotrans_slam/config/slam_toolbox.yaml
+    mapping_local_dir: "~/maps/mapping_sessions"
     # HUMAN_CONFIRM button (handover confirm; NOT an E-stop). Default on for lab TR→button→COMPLETED.
     human_confirm_enabled: true
     human_confirm_gpiochip: 4
@@ -47,10 +58,13 @@ robot_gateway:
     amcl_nomotion_service: "/request_nomotion_update"
     arrival_max_refines: 2
     # 2026-11-13 operator: 0.10 m / 0.15 rad, like Nav2's goal checker and the endpoints' position_tolerance.
-    arrival_refine_xy_m: 0.12      # the NAVIGATE's positionTolerance (Endpoint, 0.12 m) wins when it is sent
+    # 2026-11-20 lab (V013, real gateway, scan-match truth): 0.10 m -> 8/8 legs, 7 without any refine, true error
+    # 1.2-9.3 cm. 0.08 m -> 2 of 3 legs re-drove the docking and one ended worse (12.9 cm): AMCL is good to ~5-10 cm,
+    # so a tighter limit only adds shuffling. Set the Endpoints' positionTolerance to 0.10 as well (was 0.12).
+    arrival_refine_xy_m: 0.10      # the NAVIGATE's positionTolerance (Endpoint) wins when it is sent
     arrival_refine_yaw_rad: 0.0873 # 5 deg, operator 2026-11-15 (1 deg earlier that day; 0.15 before)
     docking_align_yaw_rad: 0.0873  # align step skipped when already within 5 deg
-    docking_approach_lateral_m: 0.06  # half the 0.12 m endpoint tolerance
+    docking_approach_lateral_m: 0.05  # half the 0.10 m endpoint tolerance
     docking_approach_yaw_rad: 0.0873
     docking_min_run_in_m: 0.25     # every endpoint: turn >= 0.25 m out, then straight in along its heading
     # 0 since 2026-11-15 08:20: re-sending the travel for a 10-13 cm miss asked RPP for a short diagonal hop, which a
