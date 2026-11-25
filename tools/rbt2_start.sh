@@ -59,6 +59,14 @@ if [ "$MODE" = fleet ] || [ "$MODE" = cloud ]; then
   if [ -n "${SIM_BATTERY_PERCENT:-}" ]; then ARGS+=(simulated_battery_percent:="$SIM_BATTERY_PERCENT"); fi
   # Lane-graph mode (ROUTE_GRAPH) was removed 2026-11-24: robot and backend must run the same traffic mode, a
   # robot in another mode was invisible to traffic (audit B6). An old ROUTE_GRAPH in the env is ignored.
+  # BENCH_MODE=true: robot on a stand (wheels in the air), pose from wheel odometry, no AMCL/EKF.
+  # BENCH_X/Y/YAW: the first pose (later poses come from LOCALIZE / /initialpose and survive restarts).
+  if [ "${BENCH_MODE:-false}" = true ]; then
+    ARGS+=(bench:=true bench_initial_x:="${BENCH_X:-0.0}" bench_initial_y:="${BENCH_Y:-0.0}" bench_initial_yaw:="${BENCH_YAW:-0.0}")
+    echo "[rbt2_start] BENCH MODE (robot on a stand): never use on the floor"
+  fi
+  # LAB_ENABLED=true (read by robot_gateway from this environment): obey Fault Injection Lab commands (test robots only).
+  export LAB_ENABLED="${LAB_ENABLED:-false}"
   exec ros2 launch warotrans_rbt002_bringup fleet.launch.py "${ARGS[@]}"
 fi
 rm -f "$STATE"

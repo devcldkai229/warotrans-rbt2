@@ -46,7 +46,9 @@ def _setup(context):
     lc = lambda n: LaunchConfiguration(n).perform(context)  # noqa: E731
     bundle = os.path.expanduser(lc("bundle"))
     motors = lc("motors_enabled").lower() == "true"
-    ekf = lc("enable_ekf").lower() == "true"
+    bench = lc("bench").lower() == "true"
+    # Bench (robot on a stand, wheels in the air): the gyro never turns, so EKF yaw would stay 0 -> wheel odom owns TF.
+    ekf = lc("enable_ekf").lower() == "true" and not bench
     for f in ("map.yaml", "lanes.json", "keepout.yaml", "speed.yaml", "semantic_manifest.json"):
         if not os.path.isfile(os.path.join(bundle, f)):
             raise RuntimeError(f"bundle file missing: {os.path.join(bundle, f)}")
@@ -64,6 +66,17 @@ def _setup(context):
     params.append(cfg("fleet_base.yaml"))
     base_override = {"motors_enabled": motors}
     odom_override = {"publish_tf": not ekf}  # exactly one owner of odom->base_footprint
+    if not ekf:
+        # A plain dict loses to the node-keyed "wheel_odom:" section of fleet_base.yaml (publish_tf: false), so the
+        # wheel odometry would publish no TF at all: give it as a node-keyed file, last.
+        import tempfile
+
+        import yaml
+
+        fd, odom_yaml = tempfile.mkstemp(prefix="wheel_odom_tf_", suffix=".yaml")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            yaml.safe_dump({"wheel_odom": {"ros__parameters": {"publish_tf": True}}}, f)
+        odom_override = odom_yaml
 
     actions = [
         LogInfo(msg=f"[rbt002 fleet] bundle={bundle} motors_enabled={motors} ekf={ekf} calibration="
@@ -82,11 +95,27 @@ def _setup(context):
             PythonLaunchDescriptionSource(os.path.join(desc, "launch", "description.launch.py")),
             launch_arguments={"geometry_file": os.path.join(desc, "config", "geometry.yaml"),
                               "require": "false"}.items()),
-        IncludeLaunchDescription(
+    ]
+    if bench:
+        # map_server only + bench_localizer in place of AMCL (pose = wheel odometry from the last /initialpose).
+        actions += [
+            LogInfo(msg="[rbt002 fleet] BENCH MODE: AMCL off, EKF off, pose from wheel odometry (robot on a stand)"),
+            Node(package="nav2_map_server", executable="map_server", name="map_server", output="screen",
+                 respawn=True, respawn_delay=2.0,
+                 parameters=[cfg("amcl_rbt002.yaml"), {"yaml_filename": os.path.join(bundle, "map.yaml")}]),
+            Node(package="nav2_lifecycle_manager", executable="lifecycle_manager",
+                 name="lifecycle_manager_localization", output="screen",
+                 parameters=[{"autostart": True}, {"node_names": ["map_server"]}]),
+            Node(package="warotrans_rbt002_bringup", executable="bench_localizer", name="bench_localizer",
+                 output="screen",
+                 parameters=[{"initial_x": float(lc("bench_initial_x")), "initial_y": float(lc("bench_initial_y")),
+                              "initial_yaw": float(lc("bench_initial_yaw"))}]),
+        ]
+    else:
+        actions.append(IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(loc, "launch", "localization.launch.py")),
             launch_arguments={"map": os.path.join(bundle, "map.yaml"), "autostart": "true",
-                              "amcl_params_file": cfg("amcl_rbt002.yaml")}.items()),
-    ]
+                              "amcl_params_file": cfg("amcl_rbt002.yaml")}.items()))
     if lc("camera").lower() == "true":
         actions.append(Node(package="warotrans_camera", executable="camera_stream", name="camera_stream",
                             output="screen", parameters=params))
@@ -106,7 +135,7 @@ def _setup(context):
             # Fleet mode: the other robots in the costmaps and the collision monitor (core nav2_params_fleet.yaml).
             "extra_params_file": os.path.join(nav, "config", "nav2_params_lane_aware.yaml") + ";" +
                                  os.path.join(nav, "config", "nav2_params_fleet.yaml") + ";" +
-                                 cfg("nav2_rbt002.yaml"),
+                                 cfg("nav2_rbt002.yaml") + (";" + cfg("nav2_bench.yaml") if bench else ""),
             "enable_ekf": "true" if ekf else "false",
             "enable_cmd_vel_pipeline": "true",
             "enable_authority_gate": "true",
@@ -153,6 +182,11 @@ def generate_launch_description():
         DeclareLaunchArgument("route_graph", default_value="",
                               description="lane graph GeoJSON: drive the backend's graph edges (traffic_mode=active)"),
         DeclareLaunchArgument("enable_ekf", default_value="true"),
+        DeclareLaunchArgument("bench", default_value="false",
+                              description="robot on a stand (wheels in the air): no AMCL/EKF, pose = wheel odometry"),
+        DeclareLaunchArgument("bench_initial_x", default_value="0.0"),
+        DeclareLaunchArgument("bench_initial_y", default_value="0.0"),
+        DeclareLaunchArgument("bench_initial_yaw", default_value="0.0"),
         DeclareLaunchArgument("camera", default_value="true"),
         DeclareLaunchArgument("evidence", default_value="true"),
         DeclareLaunchArgument("nav_start_delay_sec", default_value="12.0"),

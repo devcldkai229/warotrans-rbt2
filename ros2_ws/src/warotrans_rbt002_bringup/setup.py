@@ -17,6 +17,11 @@ setup(
     ],
     install_requires=["setuptools"],
     zip_safe=True,
+    entry_points={
+        "console_scripts": [
+            "bench_localizer = warotrans_rbt002_bringup.bench_localizer_node:main",
+        ],
+    },
     maintainer="WaroTrans Team",
     maintainer_email="dev@warotrans.local",
     description="RBT-002 bringup",
