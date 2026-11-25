@@ -10,7 +10,7 @@ Graph:
   + AMCL + map_server (warotrans_localization/localization.launch.py, config/rbt002/amcl_rbt002.yaml)
   + after nav_start_delay_sec: Nav2 core (warotrans_navigation/navigation.launch.py) with the lane-aware
     planner, keepout/speed filters, collision monitor, recovery_guard and cmd_vel_authority_gate
-    (extra params: core nav2_params_lane_aware.yaml then config/rbt002/nav2_rbt002.yaml)
+    (extra params: core nav2_params_lane_aware.yaml, core nav2_params_fleet.yaml, then config/rbt002/nav2_rbt002.yaml)
   + robot_gateway (warotrans_fleet/fleet.launch.py, config/rbt002/robot_gateway_rbt002.yaml) when
     mqtt_host is given; robot_code defaults to RBT-002.
 """
@@ -132,7 +132,9 @@ def _setup(context):
             "keepout_mask": os.path.join(bundle, "keepout.yaml"),
             "speed_mask": os.path.join(bundle, "speed.yaml"),
             "lanes_json": os.path.join(bundle, "lanes.json"),
+            # Fleet mode: the other robots in the costmaps and the collision monitor (core nav2_params_fleet.yaml).
             "extra_params_file": os.path.join(nav, "config", "nav2_params_lane_aware.yaml") + ";" +
+                                 os.path.join(nav, "config", "nav2_params_fleet.yaml") + ";" +
                                  cfg("nav2_rbt002.yaml") + (";" + cfg("nav2_bench.yaml") if bench else ""),
             "enable_ekf": "true" if ekf else "false",
             "enable_cmd_vel_pipeline": "true",
