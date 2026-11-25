@@ -1,0 +1,19 @@
+# BENCH MODE only (robot on a stand, wheels in the air; tools/rbt2_start.sh BENCH_MODE=true).
+# The lidar still sees the real room around the stand, while the pose drives through the map on wheel odometry: what
+# it marks is a phantom that moves with the robot (2026-11-24: "collision ahead" 0.32 m before EP-INBOUND, trip
+# failed NAVIGATION_TIMEOUT). On the bench Nav2 avoids nothing from the lidar; /scan keeps running for the evidence
+# agent (sensor liveness) and the lab's lidar fault. Never use on the floor.
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      obstacle_layer:
+        enabled: false
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      obstacle_layer:
+        enabled: false
+collision_monitor:
+  ros__parameters:
+    FootprintApproach:
+      enabled: false

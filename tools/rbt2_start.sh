@@ -59,6 +59,14 @@ if [ "$MODE" = fleet ] || [ "$MODE" = cloud ]; then
   if [ -n "${SIM_BATTERY_PERCENT:-}" ]; then ARGS+=(simulated_battery_percent:="$SIM_BATTERY_PERCENT"); fi
   # ROUTE_GRAPH=<lane graph GeoJSON>: lane-graph mode (backend Traffic:Mode=Active, Nav2 Route Server).
   if [ -n "${ROUTE_GRAPH:-}" ]; then ARGS+=(route_graph:="$ROUTE_GRAPH"); fi
+  # BENCH_MODE=true: robot on a stand (wheels in the air), pose from wheel odometry, no AMCL/EKF.
+  # BENCH_X/Y/YAW: the first pose (later poses come from LOCALIZE / /initialpose and survive restarts).
+  if [ "${BENCH_MODE:-false}" = true ]; then
+    ARGS+=(bench:=true bench_initial_x:="${BENCH_X:-0.0}" bench_initial_y:="${BENCH_Y:-0.0}" bench_initial_yaw:="${BENCH_YAW:-0.0}")
+    echo "[rbt2_start] BENCH MODE (robot on a stand): never use on the floor"
+  fi
+  # LAB_ENABLED=true (read by robot_gateway from this environment): obey Fault Injection Lab commands (test robots only).
+  export LAB_ENABLED="${LAB_ENABLED:-false}"
   exec ros2 launch warotrans_rbt002_bringup fleet.launch.py "${ARGS[@]}"
 fi
 rm -f "$STATE"

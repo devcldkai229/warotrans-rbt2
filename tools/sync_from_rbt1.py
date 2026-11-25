@@ -24,7 +24,7 @@ CORE = ["warotrans_navigation", "warotrans_localization", "warotrans_slam", "war
         # Evidence recording (camera owner + agent), same code on both robots; RBT-002 differences are parameters.
         "warotrans_camera", "warotrans_evidence_agent"]
 # Map bundles to carry (the current operational map). Raw SLAM maps and old bundles stay in RBT-001's repo.
-MAP_BUNDLES = ["map_one_v014"]
+MAP_BUNDLES = ["map_one_v014", "map_one_v021"]
 # Single files outside the core packages that core code imports at runtime/test time:
 # path_policy_validator and export_semantic_bundle.py load semantic_map_adapter.py from
 # <src>/warotrans_simulation/scripts (not a package here: COLCON_IGNORE).
