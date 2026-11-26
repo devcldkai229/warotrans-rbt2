@@ -31,3 +31,9 @@ recovery_guard:
     half_length: 0.15
     half_width: 0.132
     padding: 0.02
+
+# 2026-11-26 lab (MAP-ONE-V027): on a loaded Pi (load 9-11) recovery_guard's guarded_backup action server was not
+# seen within the core 5 s, bt_navigator failed to load its tree and Nav2 never came up ("Action server is inactive").
+bt_navigator:
+  ros__parameters:
+    wait_for_service_timeout: 30000
