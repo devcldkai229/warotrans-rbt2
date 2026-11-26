@@ -44,6 +44,11 @@ robot_gateway:
     mapping_enabled: true
     mapping_localization_manager: "lifecycle_manager_localization"
     mapping_map_topic: "/mapping/map"
+    # SYSTEM_ACTION from the console (warotrans_fleet/system_actions.py). RBT-002's stack is one systemd unit, so the
+    # whole stack restarts through it (camera included: no separate camera restart). REBOOT / SHUTDOWN / the unit
+    # restart need the sudoers rule: SERVICE=warotrans-rbt002.service bash install_system_actions.sh
+    system_actions: "RESTART_NAV,RESTART_LOCALIZATION,RESTART_STACK,REBOOT,SHUTDOWN"
+    system_stack_restart_cmd: "sudo -n /usr/bin/systemctl restart warotrans-rbt002.service"
     mapping_slam_params_file: ""     # "" = warotrans_slam/config/slam_toolbox.yaml
     mapping_local_dir: "~/maps/mapping_sessions"
     # HUMAN_CONFIRM button (handover confirm; NOT an E-stop). Default on for lab TR→button→COMPLETED.
